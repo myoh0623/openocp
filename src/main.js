@@ -54,7 +54,7 @@ function refreshProfileSelect() {
   select.replaceChildren(new Option("새 프로필", ""));
   for (const profile of profiles) select.add(new Option(profile.name, profile.id));
   select.value = selectedProfileId;
-  $("deleteProfileButton").disabled = !selectedProfileId;
+  $("deleteProfileButton").disabled = connecting || connected || !selectedProfileId;
 }
 
 function applyProfile(profile) {
@@ -82,6 +82,7 @@ function resetForm() {
 }
 
 function saveProfile(silent = false) {
+  if (connecting || connected) return false;
   const issue = validate();
   if (issue) {
     if (!silent) showToast(issue);
@@ -101,7 +102,7 @@ function saveProfile(silent = false) {
 }
 
 function deleteSelectedProfile() {
-  if (!selectedProfileId) return;
+  if (connecting || connected || !selectedProfileId) return;
   const profile = profiles.find((item) => item.id === selectedProfileId);
   $("confirmText").textContent = `‘${profile?.name || "선택한"}’ 프로필을 삭제합니다. 현재 입력값도 초기화됩니다.`;
   $("confirmDialog").showModal();
@@ -132,8 +133,13 @@ function validate() {
     }
   }
   $("validationMessage").textContent = issue;
-  $("connectButton").disabled = Boolean(issue) || connecting;
-  $("saveProfileButton").disabled = Boolean(issue) || connecting || connected;
+  const locked = connecting || connected;
+  for (const id of [...fieldIds, ...ephemeralIds, "profileSelect", "newProfileButton"]) {
+    $(id).disabled = locked;
+  }
+  $("connectButton").disabled = Boolean(issue) || locked;
+  $("saveProfileButton").disabled = Boolean(issue) || locked;
+  $("deleteProfileButton").disabled = locked || !selectedProfileId;
   updateTarget();
   return issue;
 }
@@ -156,6 +162,7 @@ function buildConnectionConfig() {
 }
 
 async function connect() {
+  if (connecting || connected) return;
   if (validate()) return;
   if ($("profileName").value.trim()) saveProfile(true);
   setConnectionState("connecting", "SSH 서버에 연결하는 중…");
@@ -255,11 +262,14 @@ async function initialize() {
 }
 
 $("profileSelect").addEventListener("change", (event) => {
+  if (connecting || connected) return;
   const profile = profiles.find((item) => item.id === event.target.value);
   if (profile) applyProfile(profile);
   else resetForm();
 });
-$("newProfileButton").addEventListener("click", resetForm);
+$("newProfileButton").addEventListener("click", () => {
+  if (!connecting && !connected) resetForm();
+});
 $("saveProfileButton").addEventListener("click", () => saveProfile(false));
 $("deleteProfileButton").addEventListener("click", deleteSelectedProfile);
 $("confirmDialog").addEventListener("close", () => {
