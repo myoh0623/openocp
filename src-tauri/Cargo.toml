@@ -1,0 +1,30 @@
+[package]
+name = "remote-ocp"
+version = "2.0.0"
+description = "OpenShift dashboard access through an SSH SOCKS tunnel"
+authors = ["omy"]
+edition = "2024"
+
+[lib]
+name = "remote_ocp_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1"
+regex = "1"
+russh = { version = "0.64.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

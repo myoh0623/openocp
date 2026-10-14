@@ -1,0 +1,60 @@
+name: Build macOS and Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Universal
+            runner: macos-latest
+            target: universal-apple-darwin
+            rustTargets: aarch64-apple-darwin,x86_64-apple-darwin
+            artifactName: Remote-OCP-macOS
+            artifactPath: |
+              src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+          - name: Windows x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            rustTargets: x86_64-pc-windows-msvc
+            artifactName: Remote-OCP-Windows
+            artifactPath: |
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rustTargets }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build desktop application
+        run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Upload application bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifactName }}
+          path: ${{ matrix.artifactPath }}
+          if-no-files-found: error
+          retention-days: 14

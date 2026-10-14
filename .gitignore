@@ -1,3 +1,9 @@
 .DS_Store
 .build/
 dist/
+dist-web/
+.tools/
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+npm-debug.log*

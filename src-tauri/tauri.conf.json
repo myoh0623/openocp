@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Remote OCP",
+  "version": "2.0.0",
+  "identifier": "com.omy.remoteocp",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist-web"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Remote OCP",
+        "width": 920,
+        "height": 790,
+        "minWidth": 720,
+        "minHeight": 680,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Remote OpenShift dashboard connector",
+    "longDescription": "Open an OpenShift or RHOAI dashboard through a local SSH SOCKS tunnel.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-",
+      "hardenedRuntime": false
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "allowDowngrades": false
+    }
+  }
+}
