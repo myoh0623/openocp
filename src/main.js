@@ -6,7 +6,8 @@ const PROFILE_KEY = "remoteOcp.connectionProfiles.v2";
 const LAST_PROFILE_KEY = "remoteOcp.lastProfile.v2";
 const fieldIds = [
   "profileName", "sshIP", "sshUser", "dashboardURL", "sshPort", "socksPort",
-  "browserPath", "browserProfilePath", "privateKeyPath", "keepTemporaryProfile", "insecureTLS"
+  "browserLanguage", "browserPath", "browserProfilePath", "privateKeyPath",
+  "keepTemporaryProfile", "insecureTLS"
 ];
 const ephemeralIds = ["password", "privateKeyPassphrase"];
 const $ = (id) => document.getElementById(id);
@@ -14,6 +15,7 @@ let profiles = loadProfiles();
 let selectedProfileId = "";
 let connected = false;
 let connecting = false;
+let browserSessionCount = 0;
 let toastTimer;
 
 function loadProfiles() {
@@ -60,7 +62,10 @@ function refreshProfileSelect() {
 function applyProfile(profile) {
   selectedProfileId = profile.id;
   setField("profileName", profile.name);
-  for (const field of fieldIds.filter((name) => name !== "profileName")) setField(field, profile[field]);
+  for (const field of fieldIds.filter((name) => name !== "profileName")) {
+    const value = field === "browserLanguage" ? (profile[field] || "en-US") : profile[field];
+    setField(field, value);
+  }
   for (const field of ephemeralIds) setField(field, "");
   localStorage.setItem(LAST_PROFILE_KEY, profile.id);
   refreshProfileSelect();
@@ -74,6 +79,7 @@ function resetForm() {
   setField("sshUser", "student");
   setField("sshPort", "22");
   setField("socksPort", "1080");
+  setField("browserLanguage", "en-US");
   for (const id of ephemeralIds) setField(id, "");
   refreshProfileSelect();
   showProfileMessage("새 프로필을 입력하세요.");
@@ -114,6 +120,7 @@ function validate() {
   const sshPort = Number($("sshPort").value);
   const socksPort = Number($("socksPort").value);
   const url = $("dashboardURL").value.trim();
+  const browserLanguage = $("browserLanguage").value;
   let issue = "";
   const octets = ip.split(".");
   if (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) {
@@ -124,6 +131,8 @@ function validate() {
     issue = "SSH 포트는 1~65535 사이여야 합니다.";
   } else if (!Number.isInteger(socksPort) || socksPort < 1024 || socksPort > 65515) {
     issue = "SOCKS 포트는 1024~65515 사이여야 합니다.";
+  } else if (!["en-US", "ko-KR"].includes(browserLanguage)) {
+    issue = "브라우저 언어를 선택해 주세요.";
   } else if (url) {
     try {
       const parsed = new URL(url);
@@ -137,6 +146,7 @@ function validate() {
   for (const id of [...fieldIds, ...ephemeralIds, "profileSelect", "newProfileButton"]) {
     $(id).disabled = locked;
   }
+  $("detectBrowserButton").disabled = locked;
   $("connectButton").disabled = Boolean(issue) || locked;
   $("saveProfileButton").disabled = Boolean(issue) || locked;
   $("deleteProfileButton").disabled = locked || !selectedProfileId;
@@ -156,6 +166,7 @@ function buildConnectionConfig() {
     dashboardUrl: fieldValue("dashboardURL"),
     browserPath: fieldValue("browserPath"),
     browserProfilePath: fieldValue("browserProfilePath"),
+    browserLanguage: fieldValue("browserLanguage"),
     keepTemporaryProfile: fieldValue("keepTemporaryProfile"),
     insecureTls: fieldValue("insecureTLS")
   };
@@ -194,22 +205,62 @@ async function disconnect() {
   catch (error) { showToast(String(error)); }
 }
 
+async function openIsolatedSession() {
+  if (!connected) return;
+  const button = $("openSessionButton");
+  button.disabled = true;
+  try {
+    await invoke("open_browser_session");
+    showToast("독립 브라우저를 열었습니다. 다른 계정으로 로그인할 수 있습니다.");
+  } catch (error) {
+    showToast(String(error));
+  } finally {
+    button.disabled = !connected;
+  }
+}
+
+async function refreshBrowserDetection(showResultToast = false) {
+  const hint = $("browserDetection");
+  if (!window.__TAURI_INTERNALS__) {
+    hint.textContent = "앱에서 실행하면 설치된 브라우저를 자동으로 확인합니다.";
+    hint.className = "field-hint";
+    return;
+  }
+
+  hint.textContent = "설치된 브라우저를 확인하는 중…";
+  hint.className = "field-hint";
+  try {
+    const browser = await invoke("detect_browser", { requested: fieldValue("browserPath") });
+    hint.textContent = `${browser.name} · ${browser.path}`;
+    hint.className = "field-hint success";
+    if (showResultToast) showToast(`${browser.name}을(를) 사용할 수 있습니다.`);
+  } catch (error) {
+    hint.textContent = String(error);
+    hint.className = "field-hint error";
+    if (showResultToast) showToast(String(error));
+  }
+}
+
 function setConnectionState(state, text) {
   connecting = state === "connecting";
   connected = state === "connected";
   $("statusIcon").className = `status-icon ${state === "idle" ? "" : state}`;
   $("statusText").textContent = text;
   $("connectButton").classList.toggle("hidden", connecting || connected);
+  $("openSessionButton").classList.toggle("hidden", !connected);
+  $("openSessionButton").disabled = !connected;
   $("disconnectButton").classList.toggle("hidden", !connecting && !connected);
   $("disconnectButton").disabled = false;
   document.querySelector(".app-shell").classList.toggle("busy", connecting || connected);
+  if (state === "idle" || state === "error") browserSessionCount = 0;
   validate();
 }
 
 function updateTarget() {
   const ip = $("sshIP").value.trim();
   const user = $("sshUser").value.trim() || "student";
-  $("statusTarget").textContent = ip ? `${user}@${ip}` : "SSH IP를 입력하세요";
+  const sessions = connected && browserSessionCount ? ` · 브라우저 ${browserSessionCount}개` : "";
+  $("statusTarget").textContent = ip ? `${user}@${ip}${sessions}` : "SSH IP를 입력하세요";
 }
 
 function appendLog(text) {
@@ -247,9 +298,16 @@ async function initialize() {
   if (profile) applyProfile(profile);
   else resetForm();
 
-  if (!window.__TAURI_INTERNALS__) return;
+  if (!window.__TAURI_INTERNALS__) {
+    await refreshBrowserDetection();
+    return;
+  }
 
   await listen("tunnel-log", (event) => appendLog(event.payload));
+  await listen("browser-session-count", (event) => {
+    browserSessionCount = Number(event.payload?.count || 0);
+    updateTarget();
+  });
   await listen("tunnel-status", (event) => {
     const { state, message } = event.payload;
     if (state === "stopped") setConnectionState("idle", "연결 안 됨");
@@ -259,6 +317,7 @@ async function initialize() {
       $("logPanel").open = true;
     } else if (state === "connecting") setConnectionState("connecting", message);
   });
+  await refreshBrowserDetection();
 }
 
 $("profileSelect").addEventListener("change", (event) => {
@@ -266,9 +325,13 @@ $("profileSelect").addEventListener("change", (event) => {
   const profile = profiles.find((item) => item.id === event.target.value);
   if (profile) applyProfile(profile);
   else resetForm();
+  void refreshBrowserDetection();
 });
 $("newProfileButton").addEventListener("click", () => {
-  if (!connecting && !connected) resetForm();
+  if (!connecting && !connected) {
+    resetForm();
+    void refreshBrowserDetection();
+  }
 });
 $("saveProfileButton").addEventListener("click", () => saveProfile(false));
 $("deleteProfileButton").addEventListener("click", deleteSelectedProfile);
@@ -278,11 +341,18 @@ $("confirmDialog").addEventListener("close", () => {
   persistProfiles();
   localStorage.removeItem(LAST_PROFILE_KEY);
   resetForm();
+  void refreshBrowserDetection();
   showProfileMessage("프로필을 삭제했습니다.");
 });
 $("connectButton").addEventListener("click", connect);
+$("openSessionButton").addEventListener("click", openIsolatedSession);
 $("disconnectButton").addEventListener("click", disconnect);
+$("detectBrowserButton").addEventListener("click", () => refreshBrowserDetection(true));
 $("clearLogButton").addEventListener("click", clearLog);
 for (const id of [...fieldIds, ...ephemeralIds]) $(id).addEventListener("input", validate);
+$("browserPath").addEventListener("input", () => {
+  $("browserDetection").textContent = "‘경로 확인’을 눌러 사용할 수 있는지 확인하세요.";
+  $("browserDetection").className = "field-hint";
+});
 
 initialize().catch((error) => showToast(`앱 초기화 오류: ${error}`));
