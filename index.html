@@ -54,6 +54,7 @@
             <p>원격 서버를 통해 OpenShift 대시보드를 엽니다.</p>
           </div>
           <div class="header-actions">
+            <button class="button subtle hidden" id="openSessionButton" type="button">＋ 독립 브라우저</button>
             <button class="button stop hidden" id="disconnectButton" type="button">연결 종료</button>
             <button class="button primary" id="connectButton" type="button">대시보드 열기 <span>↗</span></button>
           </div>
@@ -121,8 +122,19 @@
                 <input id="socksPort" type="number" min="1024" max="65515" value="1080" />
               </label>
               <label class="field">
-                <span>브라우저 실행 파일</span>
-                <input id="browserPath" autocomplete="off" placeholder="Chrome/Edge 자동 검색" />
+                <span>브라우저 언어</span>
+                <select id="browserLanguage">
+                  <option value="en-US">English (기본)</option>
+                  <option value="ko-KR">한국어</option>
+                </select>
+              </label>
+              <label class="field full">
+                <span>브라우저 실행 파일 <small>비워두면 자동 탐색</small></span>
+                <span class="input-action-row">
+                  <input id="browserPath" autocomplete="off" placeholder="Chrome / Chromium / Edge" />
+                  <button class="button subtle compact-action" id="detectBrowserButton" type="button">경로 확인</button>
+                </span>
+                <small class="field-hint" id="browserDetection" aria-live="polite">설치된 브라우저를 확인하는 중…</small>
               </label>
               <label class="field full">
                 <span>브라우저 프로필 폴더</span>

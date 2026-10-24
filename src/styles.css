@@ -157,6 +157,12 @@ input:disabled, select:disabled {
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > span { color: #4f545a; font-size: 11px; font-weight: 650; }
 .field small { margin-left: 3px; color: #989ca1; font-size: 9px; font-weight: 550; }
+.input-action-row { display: flex; align-items: center; gap: 8px; }
+.input-action-row input { min-width: 0; }
+.compact-action { flex: 0 0 auto; white-space: nowrap; }
+.field .field-hint { min-height: 13px; margin: 0; line-height: 1.4; overflow-wrap: anywhere; }
+.field .field-hint.success { color: #318153; }
+.field .field-hint.error { color: #b04737; }
 .wide { grid-column: span 2; }
 .full { grid-column: 1 / -1; }
 .validation-message { min-height: 15px; margin-top: 8px; color: #a65b10; font-size: 10px; }
@@ -283,6 +289,8 @@ dialog p { margin: 8px 0 19px; color: var(--muted); font-size: 12px; }
   body { background: #15171a; }
   .sidebar-tip { background: rgba(255,255,255,.04); }
   .field > span, .compact-field span, .sidebar-heading > span { color: #bec2c7; }
+  .field .field-hint.success { color: #72c795; }
+  .field .field-hint.error { color: #ef9b8c; }
   .mini-button, .button.subtle, select { color: #dfe2e6; background: #262a2e; }
   .button.danger-quiet { border-color: #5a3038; color: #ff9cab; background: #2c2023; }
   .section-number, .section-icon { color: #b8bdc3; background: #2a2e32; }
