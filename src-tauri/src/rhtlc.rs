@@ -176,6 +176,10 @@ impl Connection {
 
 /// Verify that traffic can actually reach the requested dashboard through SOCKS.
 /// DNS resolution remains at the lab, never on the user's VPN/local resolver.
+pub(crate) fn identity(value: &str) -> Result<String> {
+    Ok(endpoint(value)?.to_string())
+}
+
 pub(crate) async fn probe(port: u16, dashboard: &str) -> Result<()> {
     let url = Url::parse(dashboard)?;
     let host = url.host_str().context(tr!(
@@ -186,10 +190,16 @@ pub(crate) async fn probe(port: u16, dashboard: &str) -> Result<()> {
         "Check the dashboard port.",
         "대시보드 포트를 확인해 주세요."
     ))?;
-    if host.len() > 255 {
+    connect_socks(port, host, target_port).await.map(|_| ()).context(tr!("Cannot reach the dashboard through RHTLC. Check a fresh RHTLC URL and the dashboard URL.", "RHTLC 프록시를 통해 대시보드에 접속하지 못했습니다. 새 RHTLC 주소와 대시보드 URL을 확인해 주세요."))
+}
+
+/// Complete the entire SOCKS reply before handing application bytes to SSH.
+/// Send a domain address so lab DNS resolution happens on the gateway.
+pub(crate) async fn connect_socks(port: u16, host: &str, target_port: u16) -> Result<TcpStream> {
+    if host.is_empty() || host.len() > 255 || target_port == 0 {
         tr_bail!(
-            "The dashboard hostname is too long.",
-            "대시보드 호스트 이름이 너무 깁니다."
+            "Invalid SOCKS target.",
+            "SOCKS 대상 주소가 올바르지 않습니다."
         );
     }
     timeout(Duration::from_secs(15), async {
@@ -197,17 +207,42 @@ pub(crate) async fn probe(port: u16, dashboard: &str) -> Result<()> {
         stream.write_all(&[5, 1, 0]).await?;
         let mut response = [0; 2];
         stream.read_exact(&mut response).await?;
-        if response != [5, 0] { tr_bail!("Invalid SOCKS5 authentication response.", "SOCKS5 인증 응답이 올바르지 않습니다."); }
+        if response != [5, 0] {
+            tr_bail!(
+                "Invalid SOCKS5 authentication response.",
+                "SOCKS5 인증 응답이 올바르지 않습니다."
+            );
+        }
         let mut request = vec![5, 1, 0, 3, host.len() as u8];
         request.extend_from_slice(host.as_bytes());
         request.extend_from_slice(&target_port.to_be_bytes());
         stream.write_all(&request).await?;
         let mut response = [0; 4];
         stream.read_exact(&mut response).await?;
-        if response[0] != 5 || response[1] != 0 { tr_bail!("Cannot connect to the dashboard.", "대시보드에 연결할 수 없습니다."); }
-        Ok::<(), anyhow::Error>(())
-    }).await.context(tr!("The training dashboard timed out.", "실습 대시보드 응답 시간이 초과되었습니다."))?
-      .context(tr!("Cannot reach the dashboard through RHTLC. Check a fresh RHTLC URL and the dashboard URL.", "RHTLC 프록시를 통해 대시보드에 접속하지 못했습니다. 새 RHTLC 주소와 대시보드 URL을 확인해 주세요."))
+        if response[0] != 5 || response[1] != 0 || response[2] != 0 {
+            tr_bail!(
+                "The proxy could not reach the target.",
+                "프록시가 대상에 연결하지 못했습니다."
+            );
+        }
+        let address_length = match response[3] {
+            1 => 4,
+            3 => stream.read_u8().await? as usize,
+            4 => 16,
+            _ => tr_bail!(
+                "Invalid SOCKS address response.",
+                "SOCKS 주소 응답이 올바르지 않습니다."
+            ),
+        };
+        let mut bound_address_and_port = vec![0; address_length + 2];
+        stream.read_exact(&mut bound_address_and_port).await?;
+        Ok::<TcpStream, anyhow::Error>(stream)
+    })
+    .await
+    .context(tr!(
+        "The proxy connection timed out.",
+        "프록시 연결 시간이 초과되었습니다."
+    ))?
 }
 
 #[cfg(test)]
@@ -350,6 +385,45 @@ mod tests {
                 code == 0
             );
             task.await.unwrap();
+        }
+    }
+    #[tokio::test]
+    async fn socks_replies_preserve_ssh_bytes_for_every_address_type() {
+        for address in [
+            vec![1, 127, 0, 0, 1],
+            vec![3, 3, b'l', b'a', b'b'],
+            [&[4][..], &[0; 16]].concat(),
+        ] {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut greeting = [0; 3];
+                stream.read_exact(&mut greeting).await.unwrap();
+                stream.write_all(&[5, 0]).await.unwrap();
+                let mut header = [0; 5];
+                stream.read_exact(&mut header).await.unwrap();
+                assert_eq!(&header[..4], &[5, 1, 0, 3]);
+                let mut host = vec![0; header[4] as usize];
+                stream.read_exact(&mut host).await.unwrap();
+                assert_eq!(host, b"private.lab.invalid");
+                assert_eq!(stream.read_u16().await.unwrap(), 22);
+                let response = [&[5, 0, 0][..], &address, &[0, 22], b"SSH-2.0-test\r\n"].concat();
+                // Fragmented frames exercise read_exact; no local DNS lookup is possible.
+                for byte in response {
+                    stream.write_u8(byte).await.unwrap();
+                }
+            });
+            let mut stream = connect_socks(port, "private.lab.invalid", 22)
+                .await
+                .unwrap();
+            let mut banner = String::new();
+            timeout(Duration::from_secs(2), stream.read_to_string(&mut banner))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(banner, "SSH-2.0-test\r\n");
+            server.await.unwrap();
         }
     }
 }

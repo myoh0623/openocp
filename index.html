@@ -62,13 +62,21 @@
             <p data-i18n="connectionIntro">Open an OpenShift dashboard through a remote connection.</p>
           </div>
           <div class="header-actions">
-            <button class="button subtle hidden" id="openSessionButton" type="button" data-i18n="openSession">＋ Isolated browser</button>
             <button class="button stop hidden" id="disconnectButton" type="button" data-i18n="disconnect">Disconnect</button>
-            <button class="button primary" id="connectButton" type="button" data-i18n="connect">Open dashboard ↗</button>
+            <button class="button primary" id="connectButton" type="button" data-i18n="connect">Connect</button>
           </div>
         </header>
 
         <div class="workspace-scroll">
+          <section id="connectedTools" class="connected-tools hidden" aria-label="Open a tool" data-i18n-aria-label="openTool">
+            <div class="tool-actions">
+              <button class="button subtle" id="openSessionButton" type="button" data-i18n="openSession">Dashboard ↗</button>
+              <button class="button subtle" id="terminalButton" type="button" data-i18n="openTerminal">Terminal ↗</button>
+              <button class="button subtle" id="vscodeButton" type="button">VS Code ↗</button>
+            </div>
+            <p class="field-hint" data-i18n="connectionLifetime">Your connection stays active until you select Disconnect.</p>
+            <p id="toolsAvailability" class="field-hint"></p>
+          </section>
           <section class="settings-section">
             <div class="section-heading">
               <span class="section-number">1</span>
@@ -128,6 +136,35 @@
             </label>
           </section>
 
+          <section class="settings-section">
+            <div class="section-heading">
+              <span class="section-number">3</span>
+              <div>
+                <h3 data-i18n="developerTools">Terminal &amp; VS Code</h3>
+                <p id="developerToolsHint"></p>
+              </div>
+            </div>
+            <div id="remoteTargetFields" class="form-grid hidden">
+              <label class="field wide">
+                <span><span data-i18n="remoteHost">Lab SSH host</span> <small data-i18n="optional">Optional</small></span>
+                <input id="remoteHost" autocomplete="off" spellcheck="false" placeholder="workstation.lab.example.com" />
+              </label>
+              <label class="field">
+                <span data-i18n="user">User</span>
+                <input id="remoteUser" autocomplete="username" value="student" />
+              </label>
+              <label class="field port-field">
+                <span data-i18n="port">Port</span>
+                <input id="remotePort" type="number" min="1" max="65535" value="22" />
+              </label>
+            </div>
+            <label class="field remote-folder">
+              <span><span data-i18n="remoteFolder">VS Code remote folder</span> <small data-i18n="optional">Optional</small></span>
+              <input id="remoteFolder" autocomplete="off" spellcheck="false" placeholder="/home/student" />
+              <small class="field-hint" data-i18n="externalAuthHint">Complete SSH sign-in in the opened application. VS Code needs the Remote - SSH extension.</small>
+            </label>
+          </section>
+
           <details class="settings-section advanced-section" id="advancedPanel">
             <summary>
               <div class="section-heading">
@@ -166,6 +203,10 @@
               <label class="field full" id="privateKeyField">
                 <span data-i18n="privateKey">SSH private key</span>
                 <input id="privateKeyPath" autocomplete="off" placeholder="Automatically check ~/.ssh/id_ed25519" data-i18n-placeholder="privateKeyPlaceholder" />
+              </label>
+              <label class="field full">
+                <span><span data-i18n="vscodeExecutable">VS Code executable</span> <small data-i18n="autoDetect">Leave blank to detect automatically</small></span>
+                <input id="vscodePath" autocomplete="off" placeholder="Visual Studio Code.app / Code.exe" />
               </label>
               <label class="field" id="privateKeyPassphraseField">
                 <span><span data-i18n="passphrase">Key passphrase</span> <small data-i18n="notSaved">Not saved</small></span>

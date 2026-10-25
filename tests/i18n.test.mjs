@@ -9,7 +9,7 @@ const placeholders = (value) => [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1
 test('unsupported or absent preferences fall back to English', () => {
   for (const value of [null, undefined, '', 'fr', 'en-US']) assert.equal(normalizeLanguage(value), 'en');
   assert.equal(normalizeLanguage('ko'), 'ko');
-  assert.equal(translate('fr', 'connect'), 'Open dashboard ↗');
+  assert.equal(translate('fr', 'connect'), 'Connect');
 });
 
 test('both languages cover every screen label and use matching placeholders', () => {
@@ -29,6 +29,4 @@ test('profile names, URLs, and ports are interpolated without modifying user tex
   assert.equal(translate('en', 'profileSaved', { name }), `Saved profile “${name}”.`);
   assert.equal(translate('ko', 'profileSaved', { name }), `‘${name}’ 프로필을 저장했습니다.`);
   assert.equal(translate('en', 'connected', { port: 1081 }), 'Connected · 127.0.0.1:1081');
-  const url = 'https://console.example.com/path?view={name}';
-  assert.equal(translate('en', 'openedDashboard', { url }), `Opened ${url} in the browser.`);
 });

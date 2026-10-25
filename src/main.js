@@ -12,7 +12,7 @@ const LAST_PROFILE_KEY = "remoteOcp.lastProfile.v2";
 const fieldIds = [
   "connectionMode", "profileName", "sshIP", "sshUser", "dashboardURL", "sshPort", "socksPort",
   "browserLanguage", "browserPath", "browserProfilePath", "privateKeyPath",
-  "keepTemporaryProfile", "insecureTLS"
+  "keepTemporaryProfile", "insecureTLS", "remoteHost", "remoteUser", "remotePort", "remoteFolder", "vscodePath"
 ];
 const ephemeralIds = ["password", "privateKeyPassphrase", "rhtlcURL"];
 const $ = (id) => document.getElementById(id);
@@ -26,6 +26,8 @@ let toastTimer;
 let connectionState = "idle";
 let activeSocksPort = null;
 let hasLog = false;
+const openingTools = new Set();
+let connectionAttempt = 0;
 
 function loadProfiles() {
   try {
@@ -72,7 +74,8 @@ function applyProfile(profile) {
   selectedProfileId = profile.id;
   setField("profileName", profile.name);
   for (const field of fieldIds.filter((name) => name !== "profileName")) {
-    const value = field === "browserLanguage" ? (profile[field] || "en-US") : field === "connectionMode" ? (profile[field] || "ssh") : profile[field];
+    const defaults = { browserLanguage: "en-US", connectionMode: "ssh", remoteUser: "student", remotePort: "22" };
+    const value = profile[field] ?? defaults[field];
     setField(field, value);
   }
   for (const field of ephemeralIds) setField(field, "");
@@ -88,6 +91,8 @@ function resetForm() {
   setField("connectionMode", "ssh");
   setField("sshUser", "student");
   setField("sshPort", "22");
+  setField("remoteUser", "student");
+  setField("remotePort", "22");
   setField("socksPort", "1080");
   setField("browserLanguage", "en-US");
   for (const id of ephemeralIds) setField(id, "");
@@ -128,7 +133,9 @@ function validate(forSave = false) {
   const rhtlc = $("connectionMode").value === "rhtlc";
   $("sshFields").classList.toggle("hidden", rhtlc);
   $("rhtlcFields").classList.toggle("hidden", !rhtlc);
-  for (const id of ["privateKeyField", "privateKeyPassphraseField"]) $(id).classList.toggle("hidden", rhtlc);
+  $("privateKeyPassphraseField").classList.toggle("hidden", rhtlc);
+  $("remoteTargetFields").classList.toggle("hidden", !rhtlc);
+  $("developerToolsHint").textContent = t(rhtlc ? "toolsHintRhtlc" : "toolsHintSSH");
   $("dashboardHint").textContent = rhtlc
     ? t("dashboardHintRhtlc")
     : t("dashboardHintSSH");
@@ -142,7 +149,7 @@ function validate(forSave = false) {
   const octets = ip.split(".");
   if (!rhtlc && (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255))) {
     issue = t("invalidIP");
-  } else if (!rhtlc && !/^[A-Za-z0-9._-]+$/.test(user)) {
+  } else if (!rhtlc && !/^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/.test(user)) {
     issue = t("invalidUser");
   } else if (!rhtlc && (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535)) {
     issue = t("invalidSSHPort");
@@ -158,6 +165,19 @@ function validate(forSave = false) {
       issue = t("invalidDashboard");
     }
   }
+  if (!issue && rhtlc && fieldValue("remoteHost")) {
+    const host = fieldValue("remoteHost");
+    let validHost = /^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/.test(host);
+    if (host.includes(":")) {
+      try { validHost = new URL(`http://[${host}]/`).hostname.startsWith("["); }
+      catch { validHost = false; }
+    }
+    if (!validHost) issue = t("invalidRemoteHost");
+    else if (!/^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/.test(fieldValue("remoteUser"))) issue = t("invalidUser");
+    else if (!Number.isInteger(Number(fieldValue("remotePort"))) || Number(fieldValue("remotePort")) < 1 || Number(fieldValue("remotePort")) > 65535) issue = t("invalidSSHPort");
+  }
+  const folder = fieldValue("remoteFolder");
+  if (!issue && folder && (!folder.startsWith("/") || /[\x00-\x1f\x7f]/.test(folder))) issue = t("invalidRemoteFolder");
   const profileIssue = issue;
   if (!issue && rhtlc && !connected && !connecting) {
     try {
@@ -178,6 +198,7 @@ function validate(forSave = false) {
   $("connectButton").disabled = Boolean(issue) || locked;
   $("saveProfileButton").disabled = Boolean(profileIssue) || locked;
   $("deleteProfileButton").disabled = locked || !selectedProfileId;
+  updateToolButtons();
   updateTarget();
   return forSave ? profileIssue : issue;
 }
@@ -198,13 +219,19 @@ function buildConnectionConfig() {
     browserProfilePath: fieldValue("browserProfilePath"),
     browserLanguage: fieldValue("browserLanguage"),
     keepTemporaryProfile: fieldValue("keepTemporaryProfile"),
-    insecureTls: fieldValue("insecureTLS")
+    insecureTls: fieldValue("insecureTLS"),
+    remoteHost: fieldValue("remoteHost"),
+    remoteUser: fieldValue("remoteUser"),
+    remotePort: Number(fieldValue("remotePort") || 22),
+    remoteFolder: fieldValue("remoteFolder"),
+    vscodePath: fieldValue("vscodePath")
   };
 }
 
 async function connect() {
   if (connecting || connected) return;
   if (validate()) return;
+  const attempt = ++connectionAttempt;
   if ($("profileName").value.trim()) saveProfile(true);
   disconnectRequested = false;
   setConnectionState("connecting", t("connecting"));
@@ -212,6 +239,7 @@ async function connect() {
   appendLog(t("preparingLog"));
   try {
     const result = await invoke("start_connection", { config: buildConnectionConfig() });
+    if (attempt !== connectionAttempt) return;
     $("password").value = "";
     $("privateKeyPassphrase").value = "";
     $("rhtlcURL").value = "";
@@ -223,8 +251,9 @@ async function connect() {
     connected = true;
     connecting = false;
     setConnectionState("connected", t("connected", { port: result.socksPort }));
-    appendLog(t("openedDashboard", { url: result.dashboardUrl }));
+    appendLog(t("connectionLifetime"));
   } catch (error) {
+    if (attempt !== connectionAttempt) return;
     connected = false;
     connecting = false;
     if (disconnectRequested) {
@@ -242,23 +271,35 @@ async function connect() {
 
 async function disconnect() {
   disconnectRequested = true;
+  updateToolButtons();
   $("disconnectButton").disabled = true;
   $("statusText").textContent = t("disconnecting");
   try { await invoke("stop_connection"); }
   catch (error) { showToast(String(error)); }
 }
 
-async function openIsolatedSession() {
-  if (!connected) return;
-  const button = $("openSessionButton");
-  button.disabled = true;
+function updateToolButtons() {
+  const hasTarget = fieldValue("connectionMode") === "ssh" || Boolean(fieldValue("remoteHost"));
+  $("connectedTools").classList.toggle("hidden", !connected);
+  $("toolsAvailability").textContent = hasTarget ? t("externalAuthHint") : t("toolsTargetRequired");
+  for (const [id, tool] of [["openSessionButton", "browser"], ["terminalButton", "terminal"], ["vscodeButton", "vscode"]]) {
+    $(id).disabled = !connected || disconnectRequested || openingTools.has(tool) || (tool !== "browser" && !hasTarget);
+  }
+}
+
+async function openTool(tool) {
+  if (!connected || disconnectRequested || openingTools.has(tool)) return;
+  openingTools.add(tool);
+  updateToolButtons();
   try {
-    await invoke("open_browser_session");
-    showToast(t("sessionOpened"));
+    if (tool === "browser") await invoke("open_browser_session");
+    else await invoke("open_external_tool", { tool });
+    if (connected && !disconnectRequested) showToast(t(tool === "browser" ? "sessionOpened" : "toolOpened"));
   } catch (error) {
     showToast(String(error));
   } finally {
-    button.disabled = !connected;
+    openingTools.delete(tool);
+    updateToolButtons();
   }
 }
 
@@ -307,8 +348,6 @@ function setConnectionState(state, text) {
   $("statusIcon").className = `status-icon ${state === "idle" ? "" : state}`;
   $("statusText").textContent = text;
   $("connectButton").classList.toggle("hidden", connecting || connected);
-  $("openSessionButton").classList.toggle("hidden", !connected);
-  $("openSessionButton").disabled = !connected;
   $("disconnectButton").classList.toggle("hidden", !connecting && !connected);
   $("disconnectButton").disabled = false;
   document.querySelector(".app-shell").classList.toggle("busy", connecting || connected);
@@ -415,8 +454,12 @@ async function initialize() {
   });
   await listen("tunnel-status", (event) => {
     const { state, message } = event.payload;
-    if (state === "stopped") setConnectionState("idle", t("disconnected"));
+    if (state === "stopped") {
+      connectionAttempt++;
+      setConnectionState("idle", t("disconnected"));
+    }
     else if (state === "error") {
+      connectionAttempt++;
       setConnectionState("error", t("connectionFailed"));
       showToast(message);
       $("logPanel").open = true;
@@ -452,7 +495,9 @@ $("confirmDialog").addEventListener("close", () => {
 });
 $("appLanguage").addEventListener("change", changeAppLanguage);
 $("connectButton").addEventListener("click", connect);
-$("openSessionButton").addEventListener("click", openIsolatedSession);
+$("openSessionButton").addEventListener("click", () => openTool("browser"));
+$("terminalButton").addEventListener("click", () => openTool("terminal"));
+$("vscodeButton").addEventListener("click", () => openTool("vscode"));
 $("disconnectButton").addEventListener("click", disconnect);
 $("detectBrowserButton").addEventListener("click", () => refreshBrowserDetection(true));
 $("connectionMode").addEventListener("change", () => {

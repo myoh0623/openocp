@@ -306,3 +306,8 @@ dialog p { margin: 8px 0 19px; color: var(--muted); font-size: 12px; }
 .workspace-header > div:first-child { min-width: 0; }
 .workspace-header { gap: 14px; }
 .header-actions { flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; max-width: 55%; }
+
+.connected-tools { padding: 16px; margin-bottom: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.tool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.connected-tools p { margin: 10px 0 0; line-height: 1.5; font-size: 11px; color: var(--muted); }
+.remote-folder { margin-top: 16px; }

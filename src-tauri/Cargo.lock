@@ -3267,9 +3267,10 @@ name = "remote-ocp"
 version = "2.2.0"
 dependencies = [
  "anyhow",
- "regex",
  "russh",
  "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "tauri",
  "tauri-build",
  "tokio",
