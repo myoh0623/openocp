@@ -40,20 +40,20 @@
     "ko": "연결 설정"
   },
   "connectionIntro": {
-    "en": "Open an OpenShift dashboard through a remote connection.",
-    "ko": "원격 서버를 통해 OpenShift 대시보드를 엽니다."
+    "en": "Connect to your lab and open a dashboard or developer tool.",
+    "ko": "실습 환경에 연결하고 대시보드나 개발 도구를 여세요."
   },
   "openSession": {
-    "en": "＋ Isolated browser",
-    "ko": "＋ 독립 브라우저"
+    "en": "Dashboard ↗",
+    "ko": "대시보드 ↗"
   },
   "disconnect": {
     "en": "Disconnect",
     "ko": "연결 종료"
   },
   "connect": {
-    "en": "Open dashboard ↗",
-    "ko": "대시보드 열기 ↗"
+    "en": "Connect",
+    "ko": "연결"
   },
   "connectionType": {
     "en": "Connection type",
@@ -132,8 +132,8 @@
     "ko": "고급 설정"
   },
   "advancedHint": {
-    "en": "Ports, browser, and private key settings",
-    "ko": "포트, 브라우저와 개인 키 설정"
+    "en": "Ports, app paths, and private key settings",
+    "ko": "포트, 프로그램 경로와 개인 키 설정"
   },
   "socksPort": {
     "en": "Starting SOCKS port",
@@ -303,10 +303,6 @@
     "en": "Connected · 127.0.0.1:{port}",
     "ko": "연결됨 · 127.0.0.1:{port}"
   },
-  "openedDashboard": {
-    "en": "Opened {url} in the browser.",
-    "ko": "브라우저에서 {url} 주소를 열었습니다."
-  },
   "cancelled": {
     "en": "Connection cancelled.",
     "ko": "연결을 취소했습니다."
@@ -366,5 +362,89 @@
   "initializationError": {
     "en": "App initialization error: {message}",
     "ko": "앱 초기화 오류: {message}"
+  },
+  "openTerminal": {
+    "en": "Terminal ↗",
+    "ko": "터미널 ↗"
+  },
+  "openTool": {
+    "en": "Open a tool",
+    "ko": "도구 열기"
+  },
+  "connectionLifetime": {
+    "en": "Your connection stays active until you select Disconnect.",
+    "ko": "연결 종료를 누르기 전까지 접속을 유지합니다."
+  },
+  "developerTools": {
+    "en": "Terminal & VS Code",
+    "ko": "터미널 · VS Code"
+  },
+  "remoteHost": {
+    "en": "Lab SSH host",
+    "ko": "실습 SSH 호스트"
+  },
+  "remoteFolder": {
+    "en": "VS Code remote folder",
+    "ko": "VS Code 원격 폴더"
+  },
+  "vscodeExecutable": {
+    "en": "VS Code executable",
+    "ko": "VS Code 실행 파일"
+  },
+  "toolsHintRhtlc": {
+    "en": "Enter the lab SSH host for Terminal and VS Code. Leave blank for dashboard access only.",
+    "ko": "터미널과 VS Code를 사용하려면 실습 SSH 호스트를 입력하세요. 대시보드만 사용하면 비워두세요."
+  },
+  "toolsHintSSH": {
+    "en": "Uses the SSH IP address and user entered above.",
+    "ko": "위에 입력한 SSH IP 주소와 사용자로 접속합니다."
+  },
+  "externalAuthHint": {
+    "en": "Complete SSH sign-in in the opened application. VS Code needs the Remote - SSH extension.",
+    "ko": "열린 프로그램에서 SSH 로그인을 완료하세요. VS Code에는 Remote - SSH 확장이 필요합니다."
+  },
+  "toolsTargetRequired": {
+    "en": "To use Terminal or VS Code, disconnect and enter the lab SSH host.",
+    "ko": "터미널이나 VS Code를 사용하려면 연결을 종료하고 실습 SSH 호스트를 입력하세요."
+  },
+  "invalidRemoteHost": {
+    "en": "Enter a lab hostname or IP address, without a protocol or path.",
+    "ko": "프로토콜이나 경로 없이 실습 호스트 이름 또는 IP 주소를 입력하세요."
+  },
+  "invalidRemoteFolder": {
+    "en": "Enter an absolute remote folder, such as /home/student, or leave it blank.",
+    "ko": "/home/student 같은 원격 절대 경로를 입력하거나 비워두세요."
+  },
+  "toolOpened": {
+    "en": "Launch request sent. Complete SSH sign-in in the application.",
+    "ko": "실행 요청을 전달했습니다. 프로그램 창에서 SSH 로그인을 완료하세요."
+  },
+  "toolReadiness": {
+    "en": "Tool installation status",
+    "ko": "도구 설치 상태"
+  },
+  "checkAgain": {
+    "en": "Check again",
+    "ko": "다시 확인"
+  },
+  "installationGuide": {
+    "en": "Installation guide ↗",
+    "ko": "설치 안내 ↗"
+  },
+  "dismissError": {
+    "en": "Dismiss",
+    "ko": "확인"
+  },
+  "checkingTools": {
+    "en": "Checking…",
+    "ko": "확인 중…"
+  },
+  "toolsPreview": {
+    "en": "Check availability in the desktop app.",
+    "ko": "데스크톱 앱에서 설치 상태를 확인합니다."
+  },
+  "toolsCheckNeeded": {
+    "en": "Select Check again after changing the path.",
+    "ko": "경로 변경 후 다시 확인을 누르세요."
   }
 }
