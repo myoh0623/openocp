@@ -1,74 +1,77 @@
 # Remote OCP
 
-Remote OCP는 SSH SOCKS 터널을 통해 OpenShift 또는 RHOAI 대시보드를 여는 macOS/Windows 데스크톱 앱입니다.
+Remote OCP is a macOS and Windows desktop app that opens OpenShift and RHOAI dashboards through an SSH SOCKS tunnel. One **Rust + Tauri** codebase builds both desktop apps.
 
-하나의 **Rust + Tauri** 코드베이스에서 macOS 앱과 Windows 실행 파일을 함께 만듭니다.
+## Features
 
-## 주요 기능
+- Connect using an SSH IP address, username, port, and optional dashboard URL.
+- Discover the OpenShift or RHOAI route on the remote server when the dashboard URL is blank.
+- Save connection profiles for later use without storing passwords or private-key passphrases.
+- Use the built-in Rust SSH client and SOCKS5 proxy.
+- Detect Google Chrome, Chromium, or Microsoft Edge automatically and show the selected executable path.
+- Choose English or Korean for the browser in each profile, with English as the default.
+- Open multiple isolated browser sessions on the same tunnel with separate login information.
+- Close the tunnel when the last owned browser process exits.
+- Use the same interface and connection features on macOS and Windows.
 
-- SSH IP, 사용자, 포트와 대시보드 URL 입력
-- 대시보드 URL을 비워두면 원격 서버에서 OpenShift/RHOAI Route 자동 탐색
-- 여러 접속 정보를 프로필로 저장하고 다음 실행 때 다시 사용
-- 비밀번호와 개인 키 암호는 저장하지 않음
-- 내장 Rust SSH 클라이언트와 SOCKS5 프록시 사용
-- Google Chrome, Chromium 또는 Microsoft Edge 자동 탐색 및 실행 경로 표시
-- 프로필마다 English 또는 한국어 브라우저 언어 저장(기본값 English)
-- 같은 터널에서 로그인 정보가 분리된 독립 브라우저를 여러 개 실행
-- 마지막 브라우저가 닫히면 SSH 연결도 자동 종료
-- macOS와 Windows에서 같은 화면과 기능 사용
+## Connect to a dashboard
 
-## 사용 방법
+1. Launch Remote OCP for your operating system.
+2. Enter the SSH IP address and username.
+3. Enter the SSH password for password authentication, or leave it blank to use a private key. Enter a private-key passphrase in advanced settings if needed.
+4. Enter the dashboard URL, or leave it blank to discover the route automatically.
+5. Select **Open dashboard**.
+6. Select **+ Isolated browser** to sign in with another account independently.
+7. Close all browsers opened by Remote OCP, or select **Disconnect**, to stop the tunnel.
 
-1. 운영체제에 맞는 Remote OCP 앱을 실행합니다.
-2. SSH IP와 사용자 이름을 입력합니다.
-3. 비밀번호 인증이면 SSH 비밀번호를 입력합니다. 개인 키가 있으면 비밀번호를 비워둘 수 있습니다.
-4. 대시보드 URL은 필요할 때만 입력합니다. 비워두면 자동으로 탐색합니다.
-5. **대시보드 열기**를 누릅니다.
-6. 다른 계정으로 동시에 로그인하려면 **＋ 독립 브라우저**를 누릅니다.
-7. 열린 브라우저를 모두 닫으면 터널도 종료됩니다.
+Connection profiles do not include SSH passwords or private-key passphrases.
 
-프로필에는 SSH 비밀번호와 개인 키 암호가 포함되지 않습니다.
+Each isolated browser uses a separate temporary profile, so cookies and login sessions are not shared. For example, one window can use an `admin` account while another uses a `developer` account. The profile's browser language also applies to additional browser sessions.
 
-각 독립 브라우저는 별도의 임시 프로필을 사용하므로 쿠키와 로그인 세션을 공유하지 않습니다. 예를 들어 한 창에는 `admin`, 다른 창에는 `developer`로 로그인할 수 있습니다. 브라우저 언어 설정은 새로 여는 독립 브라우저에도 동일하게 적용됩니다.
+Remote OCP checks common installation locations and the system path for a compatible browser. In advanced settings, select **Check path** to verify the selected browser and executable. If automatic detection fails, enter the executable path manually.
 
-Chrome 계열 브라우저는 일반적인 설치 위치와 시스템 경로에서 자동으로 찾습니다. 고급 설정의 **경로 확인**에서 실제로 선택된 브라우저와 실행 파일 위치를 확인할 수 있습니다. 자동 탐색이 되지 않으면 같은 입력란에 실행 파일 경로를 직접 입력합니다.
+The SSH server must be reachable from your computer. Depending on the training environment, this may require a VPN.
 
-## 빌드 결과 받기
+## Download builds
 
-GitHub 저장소의 **Actions → Build macOS and Windows**에서 실행 결과를 선택하면 다음 파일을 받을 수 있습니다.
+Open **Actions → Build macOS and Windows** in this repository and select a successful run. Its artifacts include:
 
-- `Remote-OCP-macOS`: macOS 앱/DMG
-- `Remote-OCP-Windows`: Windows 설치용 EXE/MSI
+- `Remote-OCP-macOS`: Universal macOS app and DMG for Apple Silicon and Intel.
+- `Remote-OCP-Windows`: Windows x64 EXE and MSI installers.
 
-`main` 브랜치에 변경 사항이 올라갈 때마다 두 운영체제용 빌드가 자동으로 생성됩니다.
+The workflow builds both platforms for pull requests and pushes to `main`.
 
-## 로컬 빌드
+## Upcoming version 2.2
 
-필요한 항목:
+[Pull request #3](https://github.com/myoh0623/openocp/pull/3) adds an English/Korean app interface and RHTLC URL connections with a bundled transport. Those changes are available in the PR branch and its successful build artifacts until the PR is merged. App language is separate from the browser language supported by the current main branch.
 
-- Node.js 20 이상
-- Rust stable
-- macOS에서 macOS 앱을 만들 때 Xcode Command Line Tools
-- Windows에서 Windows 앱을 만들 때 Microsoft C++ Build Tools와 WebView2
+## Build locally
+
+Requirements:
+
+- Node.js 22 or later.
+- Rust stable.
+- Xcode Command Line Tools to build on macOS.
+- Microsoft C++ Build Tools and WebView2 to build on Windows.
 
 ```bash
-npm install
+npm ci
 npm run tauri build
 ```
 
-이 저장소에서 사용하는 프로젝트 전용 Rust 도구가 `.tools`에 준비되어 있다면 다음 스크립트도 사용할 수 있습니다.
+If project-local Rust tools are available in `.tools`, you can also use:
 
 ```bash
 ./build-desktop.sh
 ```
 
-빌드 결과는 `src-tauri/target/release/bundle` 아래에 생성됩니다.
+Default-target bundles are written to `src-tauri/target/release/bundle`. Builds with an explicit target use `src-tauri/target/<target>/release/bundle`.
 
-## 프로젝트 구성
+## Project layout
 
-- `src/`: 두 운영체제가 공유하는 화면과 프로필 관리
-- `src-tauri/src/`: Rust SSH, SOCKS5, URL 탐색 및 브라우저 제어
-- `src-tauri/icons/`: macOS/Windows 앱 아이콘
-- `.github/workflows/`: macOS/Windows 자동 빌드
+- `src/`: Shared interface and connection profile management.
+- `src-tauri/src/`: Rust SSH, SOCKS5, route discovery, and browser lifecycle management.
+- `src-tauri/icons/`: macOS and Windows app icons.
+- `.github/workflows/`: Automated macOS and Windows builds.
 
-실습용 `*.example.com` 주소는 브라우저 인증서 오류를 자동으로 허용합니다. 다른 주소는 고급 설정에서 직접 선택할 수 있습니다.
+Training dashboard addresses under `*.example.com` automatically allow browser certificate errors. Other dashboard addresses require the explicit advanced setting.
