@@ -298,3 +298,5 @@ dialog p { margin: 8px 0 19px; color: var(--muted); font-size: 12px; }
   .status-bar { background: #1b1e22; }
   .status-icon { background: #2b2f34; }
 }
+
+.connection-mode { margin-bottom: 16px; }

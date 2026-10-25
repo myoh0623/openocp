@@ -1,3 +1,5 @@
+mod rhtlc;
+
 use std::{
     env,
     net::{IpAddr, Ipv4Addr},
@@ -28,9 +30,15 @@ use tokio::{
 use url::Url;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConnectionConfig {
+    #[serde(default = "default_connection_mode")]
+    connection_mode: String,
+    #[serde(default)]
+    rhtlc_url: String,
+    #[serde(default)]
+    rhtlc_path: String,
     ssh_ip: String,
     ssh_port: u16,
     ssh_user: String,
@@ -44,6 +52,10 @@ struct ConnectionConfig {
     browser_language: String,
     keep_temporary_profile: bool,
     insecure_tls: bool,
+}
+
+fn default_connection_mode() -> String {
+    "ssh".into()
 }
 
 #[derive(Clone, Serialize)]
@@ -96,6 +108,8 @@ struct RunningTunnel {
 
 #[derive(Default)]
 struct AppState {
+    start_lock: Mutex<()>,
+    pending_stop: Mutex<Option<watch::Sender<bool>>>,
     runtime: Mutex<Option<RunningTunnel>>,
 }
 
@@ -127,7 +141,24 @@ impl client::Handler for SshClient {
 async fn start_connection(
     app: AppHandle,
     state: State<'_, AppState>,
+    config: ConnectionConfig,
+) -> std::result::Result<ConnectionStarted, String> {
+    let _guard = state
+        .start_lock
+        .try_lock()
+        .map_err(|_| "연결을 준비하거나 종료하는 중입니다.".to_string())?;
+    let (stop, cancel) = watch::channel(false);
+    *state.pending_stop.lock().await = Some(stop);
+    let result = start_connection_inner(app, &state, config, cancel).await;
+    state.pending_stop.lock().await.take();
+    result
+}
+
+async fn start_connection_inner(
+    app: AppHandle,
+    state: &AppState,
     mut config: ConnectionConfig,
+    mut cancel: watch::Receiver<bool>,
 ) -> std::result::Result<ConnectionStarted, String> {
     validate_config(&mut config).map_err(display_error)?;
 
@@ -136,6 +167,12 @@ async fn start_connection(
         if runtime.is_some() {
             return Err("이미 연결이 실행 중입니다.".into());
         }
+    }
+
+    if config.connection_mode == "rhtlc" {
+        return start_rhtlc_connection(app, state, config, cancel)
+            .await
+            .map_err(display_error);
     }
 
     emit_status(&app, "connecting", "SSH 인증을 확인하는 중…");
@@ -147,16 +184,23 @@ async fn start_connection(
         ),
     );
 
-    let ssh = connect_ssh(&app, &config).await.map_err(display_error)?;
+    let ssh = tokio::select! {
+        result = connect_ssh(&app, &config) => result.map_err(display_error)?,
+        _ = cancel.changed() => return Err("연결을 취소했습니다.".into()),
+    };
     config.password.clear();
     config.private_key_passphrase.clear();
     emit_log(&app, "SSH 인증이 완료되었습니다.");
 
     emit_status(&app, "connecting", "대시보드 주소를 확인하는 중…");
-    let dashboard_url = discover_dashboard(&app, &ssh, &config.dashboard_url)
-        .await
-        .map_err(display_error)?;
+    let dashboard_url = tokio::select! {
+        result = discover_dashboard(&app, &ssh, &config.dashboard_url) => result.map_err(display_error)?,
+        _ = cancel.changed() => return Err("연결을 취소했습니다.".into()),
+    };
 
+    if *cancel.borrow() {
+        return Err("연결을 취소했습니다.".into());
+    }
     let (listener, socks_port) = bind_socks_listener(config.first_socks_port)
         .await
         .map_err(display_error)?;
@@ -219,6 +263,9 @@ async fn start_connection(
         });
     }
 
+    if *cancel.borrow() {
+        let _ = stop_tx.send(true);
+    }
     let ssh = Arc::new(ssh);
     let background_app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -294,8 +341,10 @@ fn detect_browser(requested: String) -> std::result::Result<DetectedBrowser, Str
 
 #[tauri::command]
 async fn stop_connection(state: State<'_, AppState>) -> std::result::Result<(), String> {
-    let mut runtime = state.runtime.lock().await;
-    if let Some(running) = runtime.take() {
+    if let Some(stop) = state.pending_stop.lock().await.as_ref() {
+        let _ = stop.send(true);
+    }
+    if let Some(running) = state.runtime.lock().await.as_ref() {
         let _ = running.stop.send(true);
     }
     Ok(())
@@ -310,19 +359,27 @@ fn validate_config(config: &mut ConnectionConfig) -> Result<()> {
     config.browser_language = config.browser_language.trim().to_string();
     config.private_key_path = config.private_key_path.trim().to_string();
 
-    let parsed_ip: IpAddr = config
-        .ssh_ip
-        .parse()
-        .context("올바른 SSH IP 주소를 입력해 주세요.")?;
-    if !matches!(parsed_ip, IpAddr::V4(_)) {
-        bail!("현재 버전은 IPv4 SSH 주소를 사용합니다.");
-    }
-    let user_pattern = Regex::new(r"^[A-Za-z0-9._-]+$")?;
-    if !user_pattern.is_match(&config.ssh_user) {
-        bail!("SSH 사용자 이름이 올바르지 않습니다.");
-    }
-    if config.ssh_port == 0 {
-        bail!("SSH 포트는 1~65535 사이여야 합니다.");
+    if config.connection_mode == "ssh" {
+        let parsed_ip: IpAddr = config
+            .ssh_ip
+            .parse()
+            .context("올바른 SSH IP 주소를 입력해 주세요.")?;
+        if !matches!(parsed_ip, IpAddr::V4(_)) {
+            bail!("현재 버전은 IPv4 SSH 주소를 사용합니다.");
+        }
+        let user_pattern = Regex::new(r"^[A-Za-z0-9._-]+$")?;
+        if !user_pattern.is_match(&config.ssh_user) {
+            bail!("SSH 사용자 이름이 올바르지 않습니다.");
+        }
+        if config.ssh_port == 0 {
+            bail!("SSH 포트는 1~65535 사이여야 합니다.");
+        }
+    } else if config.connection_mode == "rhtlc" {
+        config.rhtlc_url = config.rhtlc_url.trim().to_string();
+        config.rhtlc_path = config.rhtlc_path.trim().to_string();
+        rhtlc::validate_url(&config.rhtlc_url)?;
+    } else {
+        bail!("지원하지 않는 접속 방식입니다.");
     }
     if !(1024..=65515).contains(&config.first_socks_port) {
         bail!("SOCKS 포트는 1024~65515 사이여야 합니다.");
@@ -517,6 +574,9 @@ async fn run_proxy_loop(
     emit_browser_count(&app, browsers.len());
 
     loop {
+        if *stop.borrow() {
+            break;
+        }
         tokio::select! {
             changed = stop.changed() => {
                 if changed.is_err() || *stop.borrow() {
@@ -580,9 +640,7 @@ async fn run_proxy_loop(
         .disconnect(Disconnect::ByApplication, "Remote OCP closed", "ko")
         .await;
 
-    if let Ok(mut runtime) = app.state::<AppState>().runtime.try_lock() {
-        *runtime = None;
-    }
+    app.state::<AppState>().runtime.lock().await.take();
     emit_status(&app, "stopped", "연결 안 됨");
 }
 
@@ -600,6 +658,11 @@ async fn watch_browser(
     mut browser: BrowserInstance,
     mut stop: watch::Receiver<bool>,
 ) {
+    if *stop.borrow() {
+        let _ = browser.child.kill().await;
+        cleanup_browser_profile(&app, browser.temporary_profile, browser.keep_profile);
+        return;
+    }
     tokio::select! {
         changed = stop.changed() => {
             if changed.is_err() || *stop.borrow() {
@@ -963,19 +1026,34 @@ pub fn run() {
             start_connection,
             open_browser_session,
             detect_browser,
+            detect_rhtlc,
             stop_connection
         ])
         .build(tauri::generate_context!())
         .expect("Remote OCP 앱을 시작할 수 없습니다.");
 
     app.run(|app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { .. } = event {
-            let state = app_handle.state::<AppState>();
-            if let Ok(mut runtime) = state.runtime.try_lock()
-                && let Some(running) = runtime.take()
-            {
-                let _ = running.stop.send(true);
-            }
+        if let tauri::RunEvent::ExitRequested {
+            api, code: None, ..
+        } = event
+        {
+            api.prevent_exit();
+            let app = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                if let Some(stop) = state.pending_stop.lock().await.as_ref() {
+                    let _ = stop.send(true);
+                }
+                // Wait for startup cleanup before stopping any established connection.
+                let _guard = state.start_lock.lock().await;
+                if let Some(running) = state.runtime.lock().await.as_ref() {
+                    let _ = running.stop.send(true);
+                }
+                while state.runtime.lock().await.is_some() {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                app.exit(0);
+            });
         }
     });
 }
@@ -1023,4 +1101,182 @@ mod tests {
         assert_eq!(detected.path, path);
         std::fs::remove_file(detected.path).unwrap();
     }
+}
+
+#[tauri::command]
+fn detect_rhtlc(requested: String) -> std::result::Result<PathBuf, String> {
+    rhtlc::find_cli(requested.trim()).map_err(display_error)
+}
+
+async fn start_rhtlc_connection(
+    app: AppHandle,
+    state: &AppState,
+    mut config: ConnectionConfig,
+    mut cancel: watch::Receiver<bool>,
+) -> Result<ConnectionStarted> {
+    let cli = rhtlc::find_cli(&config.rhtlc_path)?;
+    let browser = find_browser(&config.browser_path)?;
+    let dashboard = if config.dashboard_url.is_empty() {
+        "https://console-openshift-console.apps.ocp4.example.com/".to_string()
+    } else {
+        config.dashboard_url.clone()
+    };
+    let (reservation, port) = bind_socks_listener(config.first_socks_port).await?;
+    drop(reservation);
+    let mut tunnel = rhtlc::Connection::new(cli, port);
+    emit_status(&app, "connecting", "RHTLC로 실습 환경에 연결하는 중…");
+    emit_log(
+        &app,
+        "공식 RHTLC 클라이언트로 연결합니다. 주소의 인증 토큰은 기록하지 않습니다.",
+    );
+    let preparation = {
+        let work = async {
+            tunnel.connect(&config.rhtlc_url).await?;
+            emit_status(&app, "connecting", "RHTLC 대시보드 접속을 확인하는 중…");
+            rhtlc::probe(tunnel.port, &dashboard).await
+        };
+        tokio::pin!(work);
+        tokio::select! {
+            result = &mut work => result,
+            _ = cancel.changed() => {
+                // Let the bounded CLI operation register its daemon before disconnecting
+                // our SKU. Killing the CLI mid-startup could orphan that daemon.
+                let _ = work.await;
+                Err(anyhow!("연결을 취소했습니다."))
+            },
+        }
+    };
+    config.rhtlc_url.clear();
+    if let Err(error) = preparation {
+        if let Err(cleanup) = tunnel.disconnect().await {
+            emit_log(&app, cleanup.to_string());
+        }
+        return Err(error);
+    }
+    let options = BrowserLaunchOptions {
+        executable: browser.path,
+        socks_port: tunnel.port,
+        dashboard_url: dashboard.clone(),
+        browser_language: config.browser_language,
+        insecure_tls: config.insecure_tls,
+    };
+    let launched = (|| -> Result<BrowserInstance> {
+        let (profile, temporary) = prepare_browser_profile(&config.browser_profile_path)?;
+        match launch_browser(
+            &options.executable,
+            &profile,
+            options.socks_port,
+            &options.dashboard_url,
+            &options.browser_language,
+            options.insecure_tls,
+        ) {
+            Ok(child) => Ok(BrowserInstance {
+                child,
+                temporary_profile: temporary.then_some(profile),
+                keep_profile: config.keep_temporary_profile,
+            }),
+            Err(error) => {
+                cleanup_browser_profile(&app, temporary.then_some(profile), false);
+                Err(error)
+            }
+        }
+    })();
+    let initial = match launched {
+        Ok(browser) => browser,
+        Err(error) => {
+            let _ = tunnel.disconnect().await;
+            return Err(error);
+        }
+    };
+    let (stop, stopped) = watch::channel(false);
+    let (sender, receiver) = mpsc::unbounded_channel();
+    let port = tunnel.port;
+    *state.runtime.lock().await = Some(RunningTunnel {
+        stop: stop.clone(),
+        browser_tx: sender,
+        browser_options: options,
+        keep_profile: config.keep_temporary_profile,
+    });
+    if *cancel.borrow() {
+        let _ = stop.send(true);
+    }
+    emit_log(
+        &app,
+        format!("RHTLC 프록시 연결 확인 완료 · 127.0.0.1:{port}"),
+    );
+    tauri::async_runtime::spawn(watch_rhtlc(app, tunnel, initial, receiver, stop, stopped));
+    Ok(ConnectionStarted {
+        socks_port: port,
+        dashboard_url: dashboard,
+    })
+}
+
+async fn watch_rhtlc(
+    app: AppHandle,
+    tunnel: rhtlc::Connection,
+    initial: BrowserInstance,
+    mut incoming: mpsc::UnboundedReceiver<BrowserInstance>,
+    stop: watch::Sender<bool>,
+    mut stopped: watch::Receiver<bool>,
+) {
+    let mut browsers = JoinSet::new();
+    spawn_browser_watcher(&mut browsers, app.clone(), initial, stopped.clone());
+    emit_browser_count(&app, 1);
+    let mut health = tokio::time::interval(Duration::from_secs(5));
+    let mut failed = false;
+    loop {
+        if *stopped.borrow() {
+            break;
+        }
+        tokio::select! {
+            _ = stopped.changed() => break,
+            Some(browser) = incoming.recv() => {
+                spawn_browser_watcher(&mut browsers, app.clone(), browser, stopped.clone());
+                emit_browser_count(&app, browsers.len());
+            }
+            _ = browsers.join_next(), if !browsers.is_empty() => {
+                if browsers.is_empty() {
+                    if let Ok(browser) = incoming.try_recv() {
+                        spawn_browser_watcher(&mut browsers, app.clone(), browser, stopped.clone());
+                    } else { break; }
+                }
+                emit_browser_count(&app, browsers.len());
+            }
+            _ = health.tick() => {
+                if !matches!(timeout(Duration::from_secs(2), TcpStream::connect((Ipv4Addr::LOCALHOST, tunnel.port))).await, Ok(Ok(_))) {
+                    failed = true;
+                    emit_log(&app, "RHTLC 프록시가 종료되었습니다.");
+                    break;
+                }
+            }
+        }
+    }
+    let _ = stop.send(true);
+    incoming.close();
+    while browsers.join_next().await.is_some() {}
+    while let Some(mut browser) = incoming.recv().await {
+        let _ = browser.child.kill().await;
+        cleanup_browser_profile(&app, browser.temporary_profile, browser.keep_profile);
+    }
+    if let Err(error) = tunnel.disconnect().await {
+        failed = true;
+        emit_log(
+            &app,
+            format!("{error} 공식 RHTLC 앱에서 remote-ocp 연결을 확인해 주세요."),
+        );
+    }
+    app.state::<AppState>().runtime.lock().await.take();
+    emit_browser_count(&app, 0);
+    if !failed {
+        emit_log(&app, "Remote OCP에서 만든 RHTLC 연결을 정리했습니다.");
+    }
+    emit_status(
+        &app,
+        if failed { "error" } else { "stopped" },
+        if failed {
+            "RHTLC 연결이 끊어졌거나 종료에 실패했습니다. 실행 기록을 확인해 주세요."
+        } else {
+            "연결 안 됨"
+        },
+    );
 }

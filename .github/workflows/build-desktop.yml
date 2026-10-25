@@ -53,6 +53,9 @@ jobs:
       - name: Build desktop application
         run: npm run tauri build -- --target ${{ matrix.target }}
 
+      - name: Test connection logic
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: Upload application bundle
         uses: actions/upload-artifact@v4
         with:

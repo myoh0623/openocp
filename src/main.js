@@ -1,20 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
+import { version as appVersion } from "../package.json";
 
 const PROFILE_KEY = "remoteOcp.connectionProfiles.v2";
 const LAST_PROFILE_KEY = "remoteOcp.lastProfile.v2";
 const fieldIds = [
-  "profileName", "sshIP", "sshUser", "dashboardURL", "sshPort", "socksPort",
+  "connectionMode", "rhtlcPath", "profileName", "sshIP", "sshUser", "dashboardURL", "sshPort", "socksPort",
   "browserLanguage", "browserPath", "browserProfilePath", "privateKeyPath",
   "keepTemporaryProfile", "insecureTLS"
 ];
-const ephemeralIds = ["password", "privateKeyPassphrase"];
+const ephemeralIds = ["password", "privateKeyPassphrase", "rhtlcURL"];
 const $ = (id) => document.getElementById(id);
 let profiles = loadProfiles();
 let selectedProfileId = "";
 let connected = false;
 let connecting = false;
+let disconnectRequested = false;
 let browserSessionCount = 0;
 let toastTimer;
 
@@ -63,7 +65,7 @@ function applyProfile(profile) {
   selectedProfileId = profile.id;
   setField("profileName", profile.name);
   for (const field of fieldIds.filter((name) => name !== "profileName")) {
-    const value = field === "browserLanguage" ? (profile[field] || "en-US") : profile[field];
+    const value = field === "browserLanguage" ? (profile[field] || "en-US") : field === "connectionMode" ? (profile[field] || "ssh") : profile[field];
     setField(field, value);
   }
   for (const field of ephemeralIds) setField(field, "");
@@ -76,6 +78,7 @@ function applyProfile(profile) {
 function resetForm() {
   selectedProfileId = "";
   for (const id of fieldIds) setField(id, "");
+  setField("connectionMode", "ssh");
   setField("sshUser", "student");
   setField("sshPort", "22");
   setField("socksPort", "1080");
@@ -89,7 +92,7 @@ function resetForm() {
 
 function saveProfile(silent = false) {
   if (connecting || connected) return false;
-  const issue = validate();
+  const issue = validate(true);
   if (issue) {
     if (!silent) showToast(issue);
     return false;
@@ -114,7 +117,14 @@ function deleteSelectedProfile() {
   $("confirmDialog").showModal();
 }
 
-function validate() {
+function validate(forSave = false) {
+  const rhtlc = $("connectionMode").value === "rhtlc";
+  $("sshFields").classList.toggle("hidden", rhtlc);
+  for (const id of ["rhtlcFields", "rhtlcPathField"]) $(id).classList.toggle("hidden", !rhtlc);
+  for (const id of ["privateKeyField", "privateKeyPassphraseField"]) $(id).classList.toggle("hidden", rhtlc);
+  $("dashboardHint").textContent = rhtlc
+    ? "비워두면 기본 실습 OpenShift 콘솔을 엽니다. RHOAI 등 다른 주소는 직접 입력하세요."
+    : "주소를 비워두면 원격 서버에서 자동으로 찾습니다.";
   const ip = $("sshIP").value.trim();
   const user = $("sshUser").value.trim();
   const sshPort = Number($("sshPort").value);
@@ -123,11 +133,11 @@ function validate() {
   const browserLanguage = $("browserLanguage").value;
   let issue = "";
   const octets = ip.split(".");
-  if (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) {
+  if (!rhtlc && (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255))) {
     issue = "올바른 SSH IPv4 주소를 입력해 주세요.";
-  } else if (!/^[A-Za-z0-9._-]+$/.test(user)) {
+  } else if (!rhtlc && !/^[A-Za-z0-9._-]+$/.test(user)) {
     issue = "SSH 사용자 이름을 확인해 주세요.";
-  } else if (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535) {
+  } else if (!rhtlc && (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535)) {
     issue = "SSH 포트는 1~65535 사이여야 합니다.";
   } else if (!Number.isInteger(socksPort) || socksPort < 1024 || socksPort > 65515) {
     issue = "SOCKS 포트는 1024~65515 사이여야 합니다.";
@@ -141,21 +151,34 @@ function validate() {
       issue = "대시보드 URL은 http:// 또는 https://로 시작해야 합니다.";
     }
   }
+  const profileIssue = issue;
+  if (!issue && rhtlc && !connected && !connecting) {
+    try {
+      const parsed = new URL(fieldValue("rhtlcURL"));
+      if (parsed.protocol !== "rhtlc:" || !parsed.hostname || !parsed.searchParams.get("token") || parsed.username || parsed.password || parsed.hash) throw new Error();
+    } catch {
+      issue = "Copy RHTLC URL로 복사한 rhtlc:// 주소 전체를 붙여넣어 주세요.";
+    }
+  }
   $("validationMessage").textContent = issue;
   const locked = connecting || connected;
   for (const id of [...fieldIds, ...ephemeralIds, "profileSelect", "newProfileButton"]) {
     $(id).disabled = locked;
   }
   $("detectBrowserButton").disabled = locked;
+  $("detectRhtlcButton").disabled = locked;
   $("connectButton").disabled = Boolean(issue) || locked;
-  $("saveProfileButton").disabled = Boolean(issue) || locked;
+  $("saveProfileButton").disabled = Boolean(profileIssue) || locked;
   $("deleteProfileButton").disabled = locked || !selectedProfileId;
   updateTarget();
-  return issue;
+  return forSave ? profileIssue : issue;
 }
 
 function buildConnectionConfig() {
   return {
+    connectionMode: fieldValue("connectionMode"),
+    rhtlcUrl: fieldValue("rhtlcURL"),
+    rhtlcPath: fieldValue("rhtlcPath"),
     sshIp: fieldValue("sshIP"),
     sshPort: Number(fieldValue("sshPort")),
     sshUser: fieldValue("sshUser"),
@@ -176,13 +199,19 @@ async function connect() {
   if (connecting || connected) return;
   if (validate()) return;
   if ($("profileName").value.trim()) saveProfile(true);
-  setConnectionState("connecting", "SSH 서버에 연결하는 중…");
+  disconnectRequested = false;
+  setConnectionState("connecting", "연결을 준비하는 중…");
   clearLog();
   appendLog("연결을 준비합니다…");
   try {
     const result = await invoke("start_connection", { config: buildConnectionConfig() });
     $("password").value = "";
     $("privateKeyPassphrase").value = "";
+    $("rhtlcURL").value = "";
+    if (disconnectRequested) {
+      await invoke("stop_connection");
+      return;
+    }
     connected = true;
     connecting = false;
     setConnectionState("connected", `연결됨 · 127.0.0.1:${result.socksPort}`);
@@ -190,6 +219,11 @@ async function connect() {
   } catch (error) {
     connected = false;
     connecting = false;
+    if (disconnectRequested) {
+      setConnectionState("idle", "연결 안 됨");
+      appendLog("연결을 취소했습니다.");
+      return;
+    }
     setConnectionState("error", "연결 실패");
     const message = String(error || "알 수 없는 오류가 발생했습니다.");
     appendLog(`오류: ${message}`);
@@ -199,6 +233,7 @@ async function connect() {
 }
 
 async function disconnect() {
+  disconnectRequested = true;
   $("disconnectButton").disabled = true;
   $("statusText").textContent = "연결을 종료하는 중…";
   try { await invoke("stop_connection"); }
@@ -241,6 +276,22 @@ async function refreshBrowserDetection(showResultToast = false) {
   }
 }
 
+async function refreshRhtlcDetection() {
+  const hint = $("rhtlcDetection");
+  if (!window.__TAURI_INTERNALS__) {
+    hint.textContent = "앱에서 실행하면 설치된 RHTLC를 확인합니다.";
+    return;
+  }
+  try {
+    const path = await invoke("detect_rhtlc", { requested: fieldValue("rhtlcPath") });
+    hint.textContent = path;
+    hint.className = "field-hint success";
+  } catch (error) {
+    hint.textContent = String(error);
+    hint.className = "field-hint error";
+  }
+}
+
 function setConnectionState(state, text) {
   connecting = state === "connecting";
   connected = state === "connected";
@@ -260,7 +311,9 @@ function updateTarget() {
   const ip = $("sshIP").value.trim();
   const user = $("sshUser").value.trim() || "student";
   const sessions = connected && browserSessionCount ? ` · 브라우저 ${browserSessionCount}개` : "";
-  $("statusTarget").textContent = ip ? `${user}@${ip}${sessions}` : "SSH IP를 입력하세요";
+  $("statusTarget").textContent = $("connectionMode").value === "rhtlc"
+    ? `RHTLC · VPN 없이 접속${sessions}`
+    : ip ? `${user}@${ip}${sessions}` : "SSH IP를 입력하세요";
 }
 
 function appendLog(text) {
@@ -291,7 +344,7 @@ function showToast(message) {
 
 async function initialize() {
   const platform = navigator.userAgent.includes("Windows") ? "Windows" : navigator.userAgent.includes("Mac") ? "macOS" : "Desktop";
-  $("platformBadge").textContent = platform;
+  $("platformBadge").textContent = `${platform} · v${appVersion.replace(/\.0$/, "")}`;
   refreshProfileSelect();
   const lastId = localStorage.getItem(LAST_PROFILE_KEY);
   const profile = profiles.find((item) => item.id === lastId) || profiles[0];
@@ -318,6 +371,7 @@ async function initialize() {
     } else if (state === "connecting") setConnectionState("connecting", message);
   });
   await refreshBrowserDetection();
+  if (fieldValue("connectionMode") === "rhtlc") await refreshRhtlcDetection();
 }
 
 $("profileSelect").addEventListener("change", (event) => {
@@ -348,6 +402,11 @@ $("connectButton").addEventListener("click", connect);
 $("openSessionButton").addEventListener("click", openIsolatedSession);
 $("disconnectButton").addEventListener("click", disconnect);
 $("detectBrowserButton").addEventListener("click", () => refreshBrowserDetection(true));
+$("connectionMode").addEventListener("change", () => {
+  validate();
+  if (fieldValue("connectionMode") === "rhtlc") void refreshRhtlcDetection();
+});
+$("detectRhtlcButton").addEventListener("click", refreshRhtlcDetection);
 $("clearLogButton").addEventListener("click", clearLog);
 for (const id of [...fieldIds, ...ephemeralIds]) $(id).addEventListener("input", validate);
 $("browserPath").addEventListener("input", () => {

@@ -1,11 +1,13 @@
-# Remote OCP
+# Remote OCP 2.1
 
-Remote OCP는 SSH SOCKS 터널을 통해 OpenShift 또는 RHOAI 대시보드를 여는 macOS/Windows 데스크톱 앱입니다.
+Remote OCP는 IP·SSH 또는 RHTLC 주소로 연결해 OpenShift 또는 RHOAI 대시보드를 여는 macOS/Windows 데스크톱 앱입니다.
 
 하나의 **Rust + Tauri** 코드베이스에서 macOS 앱과 Windows 실행 파일을 함께 만듭니다.
 
 ## 주요 기능
 
+- IP·SSH / RHTLC 주소 접속 방식 선택
+- Copy RHTLC URL 주소로 공식 RHTLC 프록시 연결 후 독립 Chrome/Edge 자동 실행
 - SSH IP, 사용자, 포트와 대시보드 URL 입력
 - 대시보드 URL을 비워두면 원격 서버에서 OpenShift/RHOAI Route 자동 탐색
 - 여러 접속 정보를 프로필로 저장하고 다음 실행 때 다시 사용
@@ -17,7 +19,20 @@ Remote OCP는 SSH SOCKS 터널을 통해 OpenShift 또는 RHOAI 대시보드를 
 - 마지막 브라우저가 닫히면 SSH 연결도 자동 종료
 - macOS와 Windows에서 같은 화면과 기능 사용
 
-## 사용 방법
+## RHTLC 주소로 연결 (VPN 불필요)
+
+1. [공식 설치 안내](https://redhattraining.github.io/RHTLC_Docs/)에 따라 RHTLC를 설치합니다. macOS는 Homebrew CLI 또는 RHTLC-GUI에 포함된 CLI, Windows는 공식 설치 패키지의 `rhtlc.exe`를 사용합니다. 현재 통합은 RHTLC 6.0.2를 기준으로 검증합니다.
+2. Red Hat 실습 페이지에서 **Copy RHTLC URL**을 누릅니다.
+3. Remote OCP에서 연결 방법을 **RHTLC 주소 · VPN 없이 접속**으로 선택하고 주소를 붙여넣습니다.
+4. 대시보드 URL을 입력하거나 비워둡니다. 이 방식에서 빈 주소는 기본 실습 OpenShift 콘솔(`https://console-openshift-console.apps.ocp4.example.com/`)을 사용합니다. RHOAI 또는 다른 클러스터는 주소를 직접 입력합니다.
+5. **대시보드 열기**를 누르면 프록시 경유 접속을 확인하고 Chrome/Chromium/Edge를 자동으로 엽니다. Firefox의 프로필이나 시스템 VPN·프록시 설정을 직접 바꿀 필요가 없습니다.
+6. 마지막 독립 브라우저를 닫거나 연결을 종료하면 Remote OCP가 만든 RHTLC 연결만 정리합니다.
+
+고급 설정의 **RHTLC 실행 파일 → 경로 확인**에서 설치 경로를 확인할 수 있습니다. 자동으로 찾지 못하면 CLI 실행 파일 경로를 지정합니다. 브라우저 프로필 폴더는 비워두면 임시 폴더를 자동 생성합니다.
+
+접속 방식과 실행 파일 경로는 프로필에 저장하지만, 토큰이 포함된 RHTLC 주소는 저장하지 않습니다. 다시 연결할 때 새 주소를 붙여넣으세요. 주소는 명령행 인수가 아닌 표준 입력으로 공식 CLI에 전달하며 CLI 원문 출력도 앱 로그에 남기지 않습니다. 공식 RHTLC 자체는 연결 관리를 위해 자체 설정과 SSH 설정 항목을 생성할 수 있습니다.
+
+## IP·SSH로 연결
 
 1. 운영체제에 맞는 Remote OCP 앱을 실행합니다.
 2. SSH IP와 사용자 이름을 입력합니다.
@@ -68,6 +83,7 @@ npm run tauri build
 
 - `src/`: 두 운영체제가 공유하는 화면과 프로필 관리
 - `src-tauri/src/`: Rust SSH, SOCKS5, URL 탐색 및 브라우저 제어
+- `src-tauri/src/rhtlc.rs`: 공식 RHTLC CLI 탐색·연결·종료와 프록시 통신 확인
 - `src-tauri/icons/`: macOS/Windows 앱 아이콘
 - `.github/workflows/`: macOS/Windows 자동 빌드
 

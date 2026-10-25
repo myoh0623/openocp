@@ -14,7 +14,7 @@
           <img class="app-logo" src="/src/assets/AppIcon.png" alt="" />
           <div>
             <h1>Remote OCP</h1>
-            <span id="platformBadge">Desktop</span>
+            <span id="platformBadge">Desktop · v2.1</span>
           </div>
         </div>
 
@@ -43,7 +43,7 @@
 
         <div class="sidebar-tip">
           <span class="tip-icon">i</span>
-          <p>비밀번호와 개인 키 암호는 프로필에 저장하지 않습니다.</p>
+          <p>비밀번호, 개인 키 암호와 RHTLC 주소의 인증 토큰은 프로필에 저장하지 않습니다.</p>
         </div>
       </aside>
 
@@ -65,12 +65,26 @@
             <div class="section-heading">
               <span class="section-number">1</span>
               <div>
-                <h3>SSH 서버</h3>
-                <p>접속할 원격 서버 정보를 입력하세요.</p>
+                <h3>접속 방식</h3>
+                <p>IP·SSH 또는 RHTLC 주소로 연결하세요.</p>
               </div>
             </div>
 
-            <div class="form-grid">
+            <label class="field connection-mode">
+              <span>연결 방법</span>
+              <select id="connectionMode">
+                <option value="ssh">IP · SSH</option>
+                <option value="rhtlc">RHTLC 주소 · VPN 없이 접속</option>
+              </select>
+            </label>
+            <div id="rhtlcFields" class="hidden">
+              <label class="field">
+                <span>RHTLC 주소 <small>이번 연결에만 사용</small></span>
+                <input id="rhtlcURL" type="password" autocomplete="off" spellcheck="false" placeholder="rhtlc://…/lab?token=…" />
+                <small class="field-hint">실습 페이지에서 Copy RHTLC URL을 누른 뒤 붙여넣으세요. 공식 RHTLC 클라이언트가 필요합니다.</small>
+              </label>
+            </div>
+            <div id="sshFields" class="form-grid">
               <label class="field wide">
                 <span>IP 주소</span>
                 <input id="sshIP" inputmode="decimal" autocomplete="off" placeholder="192.0.2.10" />
@@ -96,7 +110,7 @@
               <span class="section-number">2</span>
               <div>
                 <h3>대시보드</h3>
-                <p>주소를 비워두면 원격 서버에서 자동으로 찾습니다.</p>
+                <p id="dashboardHint">주소를 비워두면 원격 서버에서 자동으로 찾습니다.</p>
               </div>
             </div>
             <label class="field">
@@ -140,11 +154,19 @@
                 <span>브라우저 프로필 폴더</span>
                 <input id="browserProfilePath" autocomplete="off" placeholder="비워두면 임시 프로필 사용" />
               </label>
-              <label class="field full">
+              <label class="field full hidden" id="rhtlcPathField">
+                <span>RHTLC 실행 파일 <small>비워두면 자동 탐색</small></span>
+                <span class="input-action-row">
+                  <input id="rhtlcPath" autocomplete="off" placeholder="rhtlc / rhtlc.exe" />
+                  <button class="button subtle compact-action" id="detectRhtlcButton" type="button">경로 확인</button>
+                </span>
+                <small class="field-hint" id="rhtlcDetection" aria-live="polite"></small>
+              </label>
+              <label class="field full" id="privateKeyField">
                 <span>SSH 개인 키</span>
                 <input id="privateKeyPath" autocomplete="off" placeholder="~/.ssh/id_ed25519 자동 검색" />
               </label>
-              <label class="field">
+              <label class="field" id="privateKeyPassphraseField">
                 <span>개인 키 암호 <small>저장하지 않음</small></span>
                 <input id="privateKeyPassphrase" type="password" autocomplete="off" placeholder="암호화된 키에만 입력" />
               </label>
