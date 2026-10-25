@@ -29,6 +29,7 @@
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
+    "license": "MIT",
     "shortDescription": "Remote OpenShift dashboard connector",
     "longDescription": "Open an OpenShift or RHOAI dashboard through a local SSH SOCKS tunnel.",
     "icon": [
@@ -46,6 +47,9 @@
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
       "allowDowngrades": false
+    },
+    "resources": {
+      "../LICENSE": "LICENSE"
     }
   }
 }

@@ -75,3 +75,7 @@ Default-target bundles are written to `src-tauri/target/release/bundle`. Builds 
 - `.github/workflows/`: Automated macOS and Windows builds.
 
 Training dashboard addresses under `*.example.com` automatically allow browser certificate errors. Other dashboard addresses require the explicit advanced setting.
+
+## License
+
+Remote OCP is licensed under the [MIT License](LICENSE). Third-party dependencies retain their respective licenses.
