@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -41,6 +45,24 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Check release version
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version;
+          const tauriVersion = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).version;
+          const cargoVersion = readFileSync('src-tauri/Cargo.toml', 'utf8').match(/^version = "([^"]+)"/m)?.[1];
+          if (!/^v\d+\.\d+\.\d+$/.test(process.env.RELEASE_TAG)
+            || process.env.RELEASE_TAG !== `v${packageVersion}`
+            || tauriVersion !== packageVersion || cargoVersion !== packageVersion) {
+            throw new Error('Release tag must match the stable version in package.json, tauri.conf.json, and Cargo.toml.');
+          }
+          NODE
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -65,3 +87,69 @@ jobs:
           path: ${{ matrix.artifactPath }}
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Publish installers
+    needs: build
+    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@v4
+
+      - name: Download tested application bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Remote-OCP-*
+          path: artifacts
+
+      - name: Prepare installers and checksums
+        run: |
+          python3 <<'PY'
+          import hashlib
+          import pathlib
+          import shutil
+
+          source = pathlib.Path('artifacts')
+          destination = pathlib.Path('release-assets')
+          destination.mkdir()
+          installers = {
+              'Remote-OCP-macOS/**/*.dmg': 'Remote-OCP-macOS-universal.dmg',
+              'Remote-OCP-Windows/**/*.exe': 'Remote-OCP-Windows-x64-setup.exe',
+              'Remote-OCP-Windows/**/*.msi': 'Remote-OCP-Windows-x64.msi',
+          }
+          checksums = []
+          for pattern, name in installers.items():
+              matches = list(source.glob(pattern))
+              if len(matches) != 1 or not matches[0].is_file() or matches[0].stat().st_size == 0:
+                  raise SystemExit(f'Expected exactly one nonempty installer for {pattern}: {matches}')
+              target = destination / name
+              shutil.copyfile(matches[0], target)
+              checksums.append(f'{hashlib.sha256(target.read_bytes()).hexdigest()}  {name}\n')
+          (destination / 'SHA256SUMS.txt').write_text(''.join(checksums), encoding='utf-8')
+          PY
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/$RELEASE_TAG.md"
+          test -s "$notes"
+          if release_state=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft'); then
+            if [ "$release_state" != "true" ]; then
+              echo "Release $RELEASE_TAG is already published; leaving its assets unchanged."
+              exit 0
+            fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "Remote OCP ${RELEASE_TAG#v}" --notes-file "$notes"
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest

@@ -4,18 +4,18 @@
 
 ## Download
 
-**[Download installers from GitHub Actions](https://github.com/myoh0623/openocp/actions/workflows/build-desktop.yml?query=branch%3Amain)**
+**[Download the latest release](https://github.com/myoh0623/openocp/releases/latest)** — no GitHub account or sign-in required.
 
-1. Sign in to GitHub and open the link above.
-2. Select the latest successful **main** build, then scroll to **Artifacts**.
-3. Download the package for your OS, extract the ZIP, and open the installer:
+Choose the installer for your OS:
 
-| OS | Artifact | Installer |
-| --- | --- | --- |
-| macOS (Apple Silicon and Intel) | `Remote-OCP-macOS` | `.dmg` |
-| Windows x64 | `Remote-OCP-Windows` | `.exe` or `.msi` |
+| OS | Download |
+| --- | --- |
+| macOS (Apple Silicon and Intel) | [Universal DMG](https://github.com/myoh0623/openocp/releases/latest/download/Remote-OCP-macOS-universal.dmg) |
+| Windows x64 | [EXE installer](https://github.com/myoh0623/openocp/releases/latest/download/Remote-OCP-Windows-x64-setup.exe) · [MSI installer](https://github.com/myoh0623/openocp/releases/latest/download/Remote-OCP-Windows-x64.msi) |
 
-Build artifacts are kept for 14 days. Choose a newer successful build if an older download has expired.
+Open the downloaded installer directly. Release assets also include `SHA256SUMS.txt` for file verification; the source-code ZIP/TAR files are not installers.
+
+Development builds remain available in [GitHub Actions](https://github.com/myoh0623/openocp/actions/workflows/build-desktop.yml?query=branch%3Amain). Those artifacts require GitHub sign-in and expire after 14 days.
 
 ## About
 
@@ -85,6 +85,8 @@ Closing a browser, terminal, or editor does **not** end the connection. Select *
 Requirements: Node.js 22+, Rust stable, and the platform's Tauri prerequisites (Xcode Command Line Tools on macOS; Microsoft C++ Build Tools and WebView2 on Windows).
 
 Both platforms are built for pull requests and pushes to `main`. Windows may prompt about the bundled tunnel executable under local firewall/security policies.
+
+To publish a stable release, keep the versions in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` aligned, add English release notes at `docs/releases/v<version>.md`, and push the matching `v<version>` tag. The workflow publishes installers only after both platforms pass their tests and builds.
 
 ```bash
 npm ci

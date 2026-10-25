@@ -4,18 +4,18 @@
 
 ## 다운로드
 
-**[GitHub Actions에서 설치 파일 다운로드](https://github.com/myoh0623/openocp/actions/workflows/build-desktop.yml?query=branch%3Amain)**
+**[최신 릴리스 다운로드](https://github.com/myoh0623/openocp/releases/latest)** — GitHub 계정이나 로그인이 필요하지 않습니다.
 
-1. GitHub에 로그인한 뒤 위 링크를 엽니다.
-2. 가장 최근에 성공한 **main** 빌드를 선택하고, 아래의 **Artifacts** 항목으로 이동합니다.
-3. 운영체제에 맞는 파일을 내려받아 ZIP 압축을 풀고 설치 파일을 실행합니다.
+운영체제에 맞는 설치 파일을 선택하세요.
 
-| 운영체제 | 다운로드 항목 | 설치 파일 |
-| --- | --- | --- |
-| macOS (Apple Silicon 및 Intel) | `Remote-OCP-macOS` | `.dmg` |
-| Windows x64 | `Remote-OCP-Windows` | `.exe` 또는 `.msi` |
+| 운영체제 | 다운로드 |
+| --- | --- |
+| macOS (Apple Silicon 및 Intel) | [Universal DMG](https://github.com/myoh0623/openocp/releases/latest/download/Remote-OCP-macOS-universal.dmg) |
+| Windows x64 | [EXE 설치 파일](https://github.com/myoh0623/openocp/releases/latest/download/Remote-OCP-Windows-x64-setup.exe) · [MSI 설치 파일](https://github.com/myoh0623/openocp/releases/latest/download/Remote-OCP-Windows-x64.msi) |
 
-빌드 파일은 14일 동안 보관됩니다. 이전 다운로드가 만료되었다면 더 최근에 성공한 빌드를 선택하세요.
+다운로드한 설치 파일을 바로 실행하세요. 릴리스에는 파일 검증용 `SHA256SUMS.txt`도 포함됩니다. 소스 코드 ZIP/TAR 파일은 설치 파일이 아닙니다.
+
+개발 중인 빌드는 [GitHub Actions](https://github.com/myoh0623/openocp/actions/workflows/build-desktop.yml?query=branch%3Amain)에서도 받을 수 있습니다. 해당 파일은 GitHub 로그인이 필요하며 14일 후 만료됩니다.
 
 ## 소개
 
@@ -85,6 +85,8 @@ Remote OCP는 세션마다 전용 SSH 설정 파일을 만들고, 앱 데이터 
 필수 도구: Node.js 22 이상, Rust 안정 버전, 운영체제별 Tauri 빌드 요구 사항(macOS는 Xcode Command Line Tools, Windows는 Microsoft C++ Build Tools와 WebView2).
 
 두 운영체제 모두 PR과 `main` 푸시 시 자동 빌드합니다. Windows에서는 로컬 방화벽이나 보안 정책에 따라 포함된 터널 실행 파일에 대한 안내가 표시될 수 있습니다.
+
+정식 릴리스를 배포하려면 `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`의 버전을 일치시키고, `docs/releases/v<버전>.md`에 영어 릴리스 노트를 작성한 뒤 일치하는 `v<버전>` 태그를 푸시하세요. 두 운영체제의 테스트와 빌드가 모두 성공해야 설치 파일을 공개합니다.
 
 ```bash
 npm ci
