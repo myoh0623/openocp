@@ -38,7 +38,9 @@ async function fixture() {
       return { name: 'Test browser', path: '/test/browser' };
     }
   });
-  const source = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
+  // Exercise Windows checkout line endings on every runner.
+  const source = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')
+    .replace(/\r?\n/g, '\r\n').replace(/^import .*;\r?\n/gm, '');
   vm.runInContext(source, context);
   await new Promise(resolve => setImmediate(resolve));
   elements.get('sshIP').value = '192.0.2.10';
