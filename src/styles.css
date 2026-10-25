@@ -250,6 +250,15 @@ dialog h3 { margin: 0; font-size: 16px; }
 dialog p { margin: 8px 0 19px; color: var(--muted); font-size: 12px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+.tool-readiness { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.readiness-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 11px; }
+.dependency-row { display: grid; grid-template-columns: 82px minmax(0, 1fr) auto; gap: 10px; padding: 5px 0; font-size: 11px; align-items: start; }
+.dependency-row small { font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.dependency-row .ready { color: #318153; }
+.dependency-row .missing { color: #b04737; }
+.error-notice { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); width: min(660px, calc(100% - 36px)); z-index: 20; display: flex; align-items: center; gap: 16px; padding: 16px; border: 1px solid #b04737; border-radius: 10px; background: #fff8f6; color: #832b20; box-shadow: 0 4px 24px #0002; font-size: 12px; }
+.error-notice span { flex: 1; overflow-wrap: anywhere; max-height: 35vh; overflow-y: auto; }
+.error-notice button { flex-shrink: 0; }
 .toast {
   position: fixed;
   right: 22px;
@@ -289,8 +298,9 @@ dialog p { margin: 8px 0 19px; color: var(--muted); font-size: 12px; }
   body { background: #15171a; }
   .sidebar-tip { background: rgba(255,255,255,.04); }
   .field > span, .compact-field span, .sidebar-heading > span { color: #bec2c7; }
-  .field .field-hint.success { color: #72c795; }
-  .field .field-hint.error { color: #ef9b8c; }
+  .field .field-hint.success, .dependency-row .ready { color: #72c795; }
+  .field .field-hint.error, .dependency-row .missing { color: #ef9b8c; }
+  .error-notice { background: #2c2023; color: #ffb6a9; border-color: #a66459; }
   .mini-button, .button.subtle, select { color: #dfe2e6; background: #262a2e; }
   .button.danger-quiet { border-color: #5a3038; color: #ff9cab; background: #2c2023; }
   .section-number, .section-icon { color: #b8bdc3; background: #2a2e32; }

@@ -163,6 +163,15 @@
               <input id="remoteFolder" autocomplete="off" spellcheck="false" placeholder="/home/student" />
               <small class="field-hint" data-i18n="externalAuthHint">Complete SSH sign-in in the opened application. VS Code needs the Remote - SSH extension.</small>
             </label>
+            <div class="tool-readiness" aria-live="polite">
+              <div class="readiness-heading">
+                <strong data-i18n="toolReadiness">Tool installation status</strong>
+                <button class="text-button" id="checkToolsButton" type="button" data-i18n="checkAgain">Check again</button>
+              </div>
+              <div class="dependency-row"><span>OpenSSH</span><small id="sshReadiness"></small><button class="text-button" id="sshHelpButton" type="button" data-i18n="installationGuide">Installation guide ↗</button></div>
+              <div class="dependency-row"><span>VS Code</span><small id="vscodeReadiness"></small><button class="text-button" id="vscodeHelpButton" type="button" data-i18n="installationGuide">Installation guide ↗</button></div>
+              <div class="dependency-row"><span>Remote - SSH</span><small id="remoteSshReadiness"></small><button class="text-button" id="remoteSshHelpButton" type="button" data-i18n="installationGuide">Installation guide ↗</button></div>
+            </div>
           </section>
 
           <details class="settings-section advanced-section" id="advancedPanel">
@@ -259,6 +268,10 @@
       </form>
     </dialog>
 
-    <div class="toast hidden" id="toast" role="alert"></div>
+    <div class="error-notice hidden" id="errorNotice" role="alert">
+      <span id="errorMessage"></span>
+      <button class="button subtle" id="dismissErrorButton" type="button" data-i18n="dismissError">Dismiss</button>
+    </div>
+    <div class="toast hidden" id="toast" role="status"></div>
   </body>
 </html>

@@ -369,21 +369,20 @@ async fn open_external_inner(app: &AppHandle, state: &AppState, tool: &str) -> R
     let session = session.as_ref().unwrap();
     if tool == "terminal" {
         tokio::select! {
-            result = session.open_terminal() => result?,
+            result = session.open_terminal(app, stop.clone()) => result?,
             _ = stop.changed() => tr_bail!("Connection cancelled.", "연결을 취소했습니다."),
         }
     } else {
-        session.open_vscode(
-            &root,
-            &runtime.config.vscode_path,
-            &runtime.config.remote_folder,
-        )?;
+        tokio::select! {
+            result = session.open_vscode(&root, &runtime.config.vscode_path, &runtime.config.remote_folder, app, stop.clone()) => result?,
+            _ = stop.changed() => tr_bail!("Connection cancelled.", "연결을 취소했습니다."),
+        }
     }
     emit_log(
         app,
         tr_format!(
-            "Opened {}. Complete SSH sign-in in that application; the connection stays active until Disconnect.",
-            "{}을(를) 열었습니다. 해당 프로그램에서 SSH 로그인을 완료하세요. 연결 종료 전까지 접속을 유지합니다.",
+            "Sent a launch request to {}. Complete SSH sign-in in that application; the connection stays active until Disconnect.",
+            "{} 실행을 요청했습니다. 해당 프로그램에서 SSH 로그인을 완료하세요. 연결 종료 전까지 접속을 유지합니다.",
             if tool == "terminal" {
                 "Terminal"
             } else {
@@ -397,6 +396,16 @@ async fn open_external_inner(app: &AppHandle, state: &AppState, tool: &str) -> R
 #[tauri::command]
 fn detect_browser(requested: String) -> std::result::Result<DetectedBrowser, String> {
     find_browser(requested.trim()).map_err(display_error)
+}
+
+#[tauri::command]
+fn detect_tools(requested: String) -> remote_tools::ToolAvailability {
+    remote_tools::detect_tools(requested.trim())
+}
+
+#[tauri::command]
+async fn open_installation_guide(topic: String) -> std::result::Result<(), String> {
+    remote_tools::open_help(&topic).await.map_err(display_error)
 }
 
 #[tauri::command]
@@ -796,7 +805,9 @@ async fn run_proxy_loop(
         .await;
 
     if let Some(runtime) = app.state::<AppState>().runtime.lock().await.take() {
-        runtime.tools.lock().await.take();
+        if let Some(session) = runtime.tools.lock().await.take() {
+            session.shutdown().await;
+        }
     }
     emit_status(&app, "stopped", tr!("Not connected", "연결 안 됨"));
 }
@@ -1218,6 +1229,8 @@ pub fn run() {
             open_browser_session,
             open_external_tool,
             detect_browser,
+            detect_tools,
+            open_installation_guide,
             detect_rhtlc,
             set_app_language,
             stop_connection
@@ -1414,7 +1427,9 @@ async fn watch_rhtlc(
         failed = true;
     }
     if let Some(runtime) = app.state::<AppState>().runtime.lock().await.take() {
-        runtime.tools.lock().await.take();
+        if let Some(session) = runtime.tools.lock().await.take() {
+            session.shutdown().await;
+        }
     }
     emit_browser_count(&app, 0);
     emit_status(

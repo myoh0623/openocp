@@ -88,17 +88,27 @@ pub(crate) struct Session {
     directory: PathBuf,
     config: PathBuf,
     ssh: PathBuf,
-    bridge: tokio::task::JoinHandle<()>,
+    bridge: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.bridge.abort();
+        if let Some(bridge) = &self.bridge {
+            bridge.abort();
+        }
         let _ = std::fs::remove_dir_all(&self.directory);
     }
 }
 
 impl Session {
+    pub async fn shutdown(mut self) {
+        if let Some(bridge) = self.bridge.take() {
+            bridge.abort();
+            let _ = bridge.await;
+        }
+        // Drop removes launch files after the listener and its clients close.
+    }
+
     pub async fn prepare(
         root: &Path,
         route: Route,
@@ -143,11 +153,11 @@ impl Session {
             directory,
             config,
             ssh,
-            bridge,
+            bridge: Some(bridge),
         })
     }
 
-    pub async fn open_terminal(&self) -> Result<()> {
+    pub async fn open_terminal(&self, app: &AppHandle, stop: watch::Receiver<bool>) -> Result<()> {
         #[cfg(target_os = "macos")]
         {
             let script = self.directory.join("Remote OCP.command");
@@ -158,18 +168,14 @@ impl Session {
                 shell_quote(&self.alias)
             );
             private_file(&script, text.as_bytes(), true)?;
-            let status = timeout(
-                Duration::from_secs(10),
+            return launch_detached(
                 Command::new("/usr/bin/open")
                     .args(["-a", "Terminal"])
-                    .arg(&script)
-                    .status(),
+                    .arg(&script),
+                "Terminal",
+                launch_error_reporter(app, stop),
             )
-            .await??;
-            if !status.success() {
-                tr_bail!("Terminal could not be opened.", "터미널을 열지 못했습니다.");
-            }
-            return Ok(());
+            .await;
         }
         #[cfg(windows)]
         {
@@ -181,7 +187,10 @@ impl Session {
                         .arg("-F")
                         .arg(&self.config)
                         .arg(&self.alias),
-                )?;
+                    "Windows Terminal",
+                    launch_error_reporter(app, stop),
+                )
+                .await?;
             } else {
                 let text = format!(
                     "& {} -F {} {}",
@@ -198,7 +207,10 @@ impl Session {
                         .args(["-NoLogo", "-NoProfile", "-NoExit", "-Command"])
                         .arg(text)
                         .creation_flags(0x00000010),
-                )?;
+                    "PowerShell",
+                    launch_error_reporter(app, stop),
+                )
+                .await?;
             }
             return Ok(());
         }
@@ -209,17 +221,17 @@ impl Session {
         )))
     }
 
-    pub fn open_vscode(&self, root: &Path, requested: &str, folder: &str) -> Result<()> {
-        let code = find_vscode(requested)?;
-        let extensions = home_directory()
-            .context("Home directory is unavailable")?
-            .join(".vscode/extensions");
-        if !has_remote_ssh(&extensions) {
-            tr_bail!(
-                "Install Microsoft's Remote - SSH extension in VS Code, then try again.",
-                "VS Code에서 Microsoft의 Remote - SSH 확장을 설치한 뒤 다시 시도하세요."
-            );
-        }
+    pub async fn open_vscode(
+        &self,
+        root: &Path,
+        requested: &str,
+        folder: &str,
+        app: &AppHandle,
+        stop: watch::Receiver<bool>,
+    ) -> Result<()> {
+        let code = supported_vscode(requested)?;
+        let extensions = extensions_directory()?;
+        require_remote_ssh(&extensions)?;
         // macOS limits Unix socket paths to 103 bytes. A long app-data path
         // makes VS Code exit before creating a window; keep its profile short.
         let base = home_directory()
@@ -239,28 +251,7 @@ impl Session {
         let user = data.join("User");
         private_directory(&user)?;
         let settings_path = user.join("settings.json");
-        let mut settings: serde_json::Map<String, serde_json::Value> = if settings_path.exists() {
-            serde_json::from_slice(&std::fs::read(&settings_path)?).context(tr!(
-                "Cannot read the dedicated VS Code settings file.",
-                "전용 VS Code 설정 파일을 읽지 못했습니다."
-            ))?
-        } else {
-            serde_json::Map::new()
-        };
-        settings.insert(
-            "remote.SSH.configFile".into(),
-            serde_json::json!(self.config),
-        );
-        settings.insert("remote.SSH.path".into(), serde_json::json!(self.ssh));
-        settings.insert(
-            "remote.SSH.showLoginTerminal".into(),
-            serde_json::json!(true),
-        );
-        private_file(
-            &settings_path,
-            &serde_json::to_vec_pretty(&settings)?,
-            false,
-        )?;
+        update_vscode_settings(&settings_path, &self.config, &self.ssh)?;
         let mut command = Command::new(code);
         command
             .args(["--new-window", "--user-data-dir"])
@@ -276,26 +267,115 @@ impl Session {
                 .arg("--folder-uri")
                 .arg(folder_uri(&self.alias, folder)?);
         }
-        launch_detached(&mut command)
+        launch_detached(&mut command, "VS Code", launch_error_reporter(app, stop)).await
     }
 }
 
-fn launch_detached(command: &mut Command) -> Result<()> {
+fn launch_error_reporter(
+    app: &AppHandle,
+    stop: watch::Receiver<bool>,
+) -> impl FnOnce(String) + Send + 'static {
+    let app = app.clone();
+    move |message| {
+        if !*stop.borrow() {
+            let _ = app.emit("tool-error", message);
+        }
+    }
+}
+
+fn launch_status(status: std::process::ExitStatus, name: &str) -> Result<()> {
+    if !status.success() {
+        tr_bail!(
+            "{} exited with an error ({}). Check the application installation and its logs, then try again.",
+            "{}이(가) 오류로 종료되었습니다({}). 프로그램 설치 상태와 해당 실행 기록을 확인한 뒤 다시 시도하세요.",
+            name,
+            status
+        );
+    }
+    Ok(())
+}
+
+async fn launch_detached(
+    command: &mut Command,
+    name: &str,
+    on_error: impl FnOnce(String) + Send + 'static,
+) -> Result<()> {
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .context(tr!(
-            "Could not launch the external application.",
-            "외부 프로그램을 실행하지 못했습니다."
+            "Could not launch the external application. Check its executable and permissions.",
+            "외부 프로그램을 실행하지 못했습니다. 실행 파일과 권한을 확인하세요."
         ))?;
-    // Launchers may exit while an existing application takes over. Never kill
-    // the user's editor or infer the tunnel lifetime from this process.
-    tokio::spawn(async move {
-        let _ = child.wait().await;
-    });
-    Ok(())
+    // Detect immediate failure, but allow long-lived editors and successful
+    // handoff to existing windows. Never kill the user's editor on drop.
+    match timeout(Duration::from_secs(2), child.wait()).await {
+        Ok(status) => launch_status(status?, name),
+        Err(_) => {
+            let name = name.to_owned();
+            tokio::spawn(async move {
+                let result = child
+                    .wait()
+                    .await
+                    .map_err(anyhow::Error::from)
+                    .and_then(|status| launch_status(status, &name));
+                if let Err(error) = result {
+                    on_error(error.to_string());
+                }
+            });
+            Ok(())
+        }
+    }
+}
+
+fn update_vscode_settings(path: &Path, config: &Path, ssh: &Path) -> Result<()> {
+    use jsonc_parser::{ParseOptions, cst::CstRootNode};
+    let text = if path.exists() {
+        std::fs::read_to_string(path)?
+    } else {
+        "{}\n".into()
+    };
+    // Match VS Code JSONC, without accepting malformed JSON5 syntax.
+    let options = ParseOptions {
+        allow_comments: true,
+        allow_trailing_commas: true,
+        allow_loose_object_property_names: false,
+        allow_missing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
+        allow_bare_decimal_point_numbers: false,
+        allow_non_finite_numbers: false,
+        allow_extended_string_escapes: false,
+    };
+    let root = CstRootNode::parse(&text, &options).context(tr!(
+        "Cannot read the dedicated VS Code settings file. Fix its JSON syntax and try again.",
+        "전용 VS Code 설정 파일을 읽지 못했습니다. JSON 문법을 수정한 뒤 다시 시도하세요."
+    ))?;
+    let object = root.object_value_or_create().context(tr!(
+        "VS Code settings must contain a JSON object.",
+        "VS Code 설정은 JSON 객체여야 합니다."
+    ))?;
+    for (key, value) in [
+        (
+            "remote.SSH.configFile",
+            jsonc_parser::json!(config.to_string_lossy().as_ref()),
+        ),
+        (
+            "remote.SSH.path",
+            jsonc_parser::json!(ssh.to_string_lossy().as_ref()),
+        ),
+        ("remote.SSH.showLoginTerminal", jsonc_parser::json!(true)),
+    ] {
+        if let Some(property) = object.get(key) {
+            property.set_value(value);
+        } else {
+            object.append(key, value);
+        }
+    }
+    private_file(path, root.to_string().as_bytes(), false)
 }
 
 async fn forward(listener: TcpListener, route: Route, mut stop: watch::Receiver<bool>) {
@@ -498,7 +578,127 @@ fn find_vscode(requested: &str) -> Result<PathBuf> {
     ))
 }
 
+fn portable_data(code: &Path) -> Option<PathBuf> {
+    let code = code.canonicalize().unwrap_or_else(|_| code.to_path_buf());
+    // Check both layouts so explicit executable paths behave consistently.
+    if let Some(bundle) = code
+        .ancestors()
+        .find(|p| p.extension().is_some_and(|e| e == "app"))
+    {
+        return bundle
+            .parent()
+            .map(|p| p.join("code-portable-data"))
+            .filter(|p| p.is_dir());
+    }
+    code.parent().map(|p| p.join("data")).filter(|p| p.is_dir())
+}
+
+fn supported_vscode(requested: &str) -> Result<PathBuf> {
+    let code = find_vscode(requested)?;
+    if portable_data(&code).is_some()
+        || env::var_os("VSCODE_PORTABLE").is_some_and(|v| !v.is_empty())
+    {
+        tr_bail!(
+            "Portable VS Code overrides the separate connection profile and is not supported. Select a standard VS Code installation in advanced settings.",
+            "포터블 VS Code는 전용 연결 프로필을 무시하므로 지원하지 않습니다. 설치형 VS Code를 설치하고 고급 설정에서 선택하세요."
+        );
+    }
+    Ok(code)
+}
+
+fn extensions_directory() -> Result<PathBuf> {
+    if let Some(path) = env::var_os("VSCODE_EXTENSIONS").filter(|p| !p.is_empty()) {
+        return Ok(PathBuf::from(path));
+    }
+    Ok(home_directory()
+        .context("Home directory is unavailable")?
+        .join(".vscode/extensions"))
+}
+
+fn require_remote_ssh(extensions: &Path) -> Result<()> {
+    if !has_remote_ssh(extensions) {
+        tr_bail!(
+            "Install Microsoft's Remote - SSH extension in VS Code, then select Check again.",
+            "VS Code에서 Microsoft의 Remote - SSH 확장을 설치한 뒤 ‘다시 확인’을 누르세요."
+        );
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub(crate) struct DependencyStatus {
+    available: bool,
+    message: String,
+}
+
+impl DependencyStatus {
+    fn from_result(result: Result<()>) -> Self {
+        match result {
+            Ok(()) => Self {
+                available: true,
+                message: tr!("Ready", "준비 완료").into(),
+            },
+            Err(error) => Self {
+                available: false,
+                message: error.to_string(),
+            },
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ToolAvailability {
+    ssh: DependencyStatus,
+    vscode: DependencyStatus,
+    remote_ssh: DependencyStatus,
+}
+
+pub(crate) fn detect_tools(requested: &str) -> ToolAvailability {
+    ToolAvailability {
+        ssh: DependencyStatus::from_result(find_ssh().map(|_| ())),
+        vscode: DependencyStatus::from_result(supported_vscode(requested).map(|_| ())),
+        remote_ssh: DependencyStatus::from_result(
+            extensions_directory().and_then(|p| require_remote_ssh(&p)),
+        ),
+    }
+}
+
+pub(crate) fn help_url(topic: &str) -> Result<&'static str> {
+    match topic {
+        "ssh" => Ok(
+            "https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-install-firstuse",
+        ),
+        "vscode" => Ok("https://code.visualstudio.com/download"),
+        "remote-ssh" => {
+            Ok("https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh")
+        }
+        _ => tr_bail!("Unknown installation guide.", "알 수 없는 설치 안내입니다."),
+    }
+}
+
+pub(crate) async fn open_help(topic: &str) -> Result<()> {
+    let url = help_url(topic)?;
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("/usr/bin/open");
+    #[cfg(windows)]
+    let mut command = {
+        let root = env::var_os("SystemRoot").context("SystemRoot is unavailable")?;
+        let mut command = Command::new(PathBuf::from(root).join("System32/rundll32.exe"));
+        command.arg("url.dll,FileProtocolHandler");
+        command
+    };
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let mut command = Command::new("xdg-open");
+    let status = timeout(Duration::from_secs(10), command.arg(url).status()).await??;
+    launch_status(status, tr!("Browser", "브라우저"))
+}
+
 fn has_remote_ssh(extensions: &Path) -> bool {
+    let obsolete: serde_json::Value = std::fs::read(extensions.join(".obsolete"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
     std::fs::read_dir(extensions).is_ok_and(|entries| {
         entries.flatten().any(|entry| {
             let candidate = entry
@@ -506,6 +706,7 @@ fn has_remote_ssh(extensions: &Path) -> bool {
                 .to_string_lossy()
                 .starts_with("ms-vscode-remote.remote-ssh-");
             candidate
+                && obsolete[entry.file_name().to_string_lossy().as_ref()] != true
                 && std::fs::read(entry.path().join("package.json"))
                     .ok()
                     .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
@@ -528,6 +729,101 @@ mod tests {
             socks_port: None,
             scope: "lab-a".into(),
         }
+    }
+
+    #[test]
+    fn vscode_settings_preserve_jsonc_and_reject_invalid_content_without_overwriting() {
+        let root = env::temp_dir().join(format!("remote-ocp-jsonc-{}", Uuid::new_v4()));
+        private_directory(&root).unwrap();
+        let path = root.join("settings.json");
+        let original = r#"{
+  // My editor preferences
+  "editor.fontSize": 16,
+  "homepage": "https://example.com/", /* Keep this comment */
+  "remote.SSH.configFile": "old-session",
+}"#;
+        private_file(&path, original.as_bytes(), false).unwrap();
+        let config = root.join("new session");
+        let ssh = root.join("ssh");
+        update_vscode_settings(&path, &config, &ssh).unwrap();
+        let output = std::fs::read_to_string(&path).unwrap();
+        assert!(output.contains("// My editor preferences"));
+        assert!(output.contains("/* Keep this comment */"));
+        assert!(output.contains("\"editor.fontSize\": 16,"));
+        assert!(output.contains("https://example.com/"));
+        assert!(output.contains(&serde_json::to_string(&config).unwrap()));
+        assert!(!output.contains("old-session"));
+        update_vscode_settings(&path, &config, &ssh).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), output);
+        for invalid in ["[]", "null", "{broken", r#"{"a": 1 "b": 2}"#] {
+            private_file(&path, invalid.as_bytes(), false).unwrap();
+            assert!(update_vscode_settings(&path, &config, &ssh).is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), invalid);
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn portable_installations_are_identified_before_any_settings_are_written() {
+        let root = env::temp_dir().join(format!("remote-ocp-portable-{}", Uuid::new_v4()));
+        private_directory(&root.join("data")).unwrap();
+        let code = root.join("Code.exe");
+        private_file(&code, b"test", false).unwrap();
+        assert!(portable_data(&code).is_some());
+        assert!(supported_vscode(code.to_str().unwrap()).is_err());
+        assert!(!root.join("data/User/settings.json").exists());
+        let bundle = root.join("Visual Studio Code.app/Contents/Resources/app/bin");
+        private_directory(&bundle).unwrap();
+        private_file(&bundle.join("code"), b"test", false).unwrap();
+        assert!(portable_data(&bundle.join("code")).is_none());
+        private_directory(&root.join("code-portable-data")).unwrap();
+        assert!(portable_data(&bundle.join("code")).is_some());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    // Run only in a child test process to simulate real launcher exit behavior.
+    #[test]
+    fn launcher_fixture() {
+        match env::var("REMOTE_OCP_TEST_LAUNCH").as_deref() {
+            Ok("fail") => std::process::exit(7),
+            Ok("late-fail") => {
+                std::thread::sleep(Duration::from_secs(3));
+                std::process::exit(9);
+            }
+            _ => {}
+        }
+    }
+
+    fn fixture_command(case: &str) -> Command {
+        let mut cmd = Command::new(env::current_exe().unwrap());
+        cmd.args(["--exact", "remote_tools::tests::launcher_fixture"])
+            .env("REMOTE_OCP_TEST_LAUNCH", case);
+        cmd
+    }
+
+    #[tokio::test]
+    async fn launcher_checks_immediate_exit_and_reports_late_failure() {
+        assert!(
+            launch_detached(&mut fixture_command("fail"), "Test app", |_| {})
+                .await
+                .is_err()
+        );
+        assert!(
+            launch_detached(&mut fixture_command("success"), "Test app", |_| {})
+                .await
+                .is_ok()
+        );
+        let (send, receive) = tokio::sync::oneshot::channel();
+        launch_detached(&mut fixture_command("late-fail"), "Test app", |message| {
+            let _ = send.send(message);
+        })
+        .await
+        .unwrap();
+        let message = timeout(Duration::from_secs(10), receive)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(message.contains("Test app"));
     }
 
     #[test]
@@ -564,6 +860,13 @@ mod tests {
         )
         .unwrap();
         assert!(has_remote_ssh(&root));
+        private_file(
+            &root.join(".obsolete"),
+            br#"{"ms-vscode-remote.remote-ssh-1.0":true}"#,
+            false,
+        )
+        .unwrap();
+        assert!(!has_remote_ssh(&root));
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -679,7 +982,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_drop_removes_launch_files_and_listener() {
+    async fn session_shutdown_removes_launch_files_and_listener() {
         let server = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let port = server.local_addr().unwrap().port();
         let task = tokio::spawn(async move {
@@ -714,18 +1017,16 @@ mod tests {
                 0o600
             );
         }
-        drop(session);
+        timeout(Duration::from_secs(5), session.shutdown())
+            .await
+            .unwrap();
         assert!(!directory.exists());
-        timeout(Duration::from_secs(2), async {
-            while TcpStream::connect((Ipv4Addr::LOCALHOST, port))
-                .await
-                .is_ok()
-            {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .unwrap();
+        // Rebind proves the listener was released, without waiting for Windows'
+        // TCP connection-refused retries on a closed port.
+        let rebound = TcpListener::bind((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        drop(rebound);
         task.await.unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -416,7 +416,35 @@
     "ko": "/home/student 같은 원격 절대 경로를 입력하거나 비워두세요."
   },
   "toolOpened": {
-    "en": "Application launched. Complete SSH sign-in in its window.",
-    "ko": "프로그램을 실행했습니다. 열린 창에서 SSH 로그인을 완료하세요."
+    "en": "Launch request sent. Complete SSH sign-in in the application.",
+    "ko": "실행 요청을 전달했습니다. 프로그램 창에서 SSH 로그인을 완료하세요."
+  },
+  "toolReadiness": {
+    "en": "Tool installation status",
+    "ko": "도구 설치 상태"
+  },
+  "checkAgain": {
+    "en": "Check again",
+    "ko": "다시 확인"
+  },
+  "installationGuide": {
+    "en": "Installation guide ↗",
+    "ko": "설치 안내 ↗"
+  },
+  "dismissError": {
+    "en": "Dismiss",
+    "ko": "확인"
+  },
+  "checkingTools": {
+    "en": "Checking…",
+    "ko": "확인 중…"
+  },
+  "toolsPreview": {
+    "en": "Check availability in the desktop app.",
+    "ko": "데스크톱 앱에서 설치 상태를 확인합니다."
+  },
+  "toolsCheckNeeded": {
+    "en": "Select Check again after changing the path.",
+    "ko": "경로 변경 후 다시 확인을 누르세요."
   }
 }

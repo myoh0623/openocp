@@ -28,6 +28,7 @@ let activeSocksPort = null;
 let hasLog = false;
 const openingTools = new Set();
 let connectionAttempt = 0;
+let toolsCheck = 0;
 
 function loadProfiles() {
   try {
@@ -263,8 +264,7 @@ async function connect() {
     }
     setConnectionState("error", t("connectionFailed"));
     const message = String(error || t("unknownError"));
-    appendLog(t("error", { message }));
-    showToast(message);
+    showError(message);
     $("logPanel").open = true;
   }
 }
@@ -275,7 +275,7 @@ async function disconnect() {
   $("disconnectButton").disabled = true;
   $("statusText").textContent = t("disconnecting");
   try { await invoke("stop_connection"); }
-  catch (error) { showToast(String(error)); }
+  catch (error) { showError(String(error)); }
 }
 
 function updateToolButtons() {
@@ -296,9 +296,10 @@ async function openTool(tool) {
     else await invoke("open_external_tool", { tool });
     if (connected && !disconnectRequested) showToast(t(tool === "browser" ? "sessionOpened" : "toolOpened"));
   } catch (error) {
-    showToast(String(error));
+    showError(String(error));
   } finally {
     openingTools.delete(tool);
+    if (tool !== "browser") void refreshToolsDetection();
     updateToolButtons();
   }
 }
@@ -321,8 +322,46 @@ async function refreshBrowserDetection(showResultToast = false) {
   } catch (error) {
     hint.textContent = String(error);
     hint.className = "field-hint error";
-    if (showResultToast) showToast(String(error));
+    if (showResultToast) showError(String(error));
   }
+}
+
+async function refreshToolsDetection() {
+  const attempt = ++toolsCheck;
+  const rows = [["sshReadiness", "ssh"], ["vscodeReadiness", "vscode"], ["remoteSshReadiness", "remoteSsh"]];
+  for (const [id] of rows) { $(id).textContent = t("checkingTools"); $(id).className = ""; }
+  if (!window.__TAURI_INTERNALS__) {
+    for (const [id] of rows) $(id).textContent = t("toolsPreview");
+    return;
+  }
+  $("checkToolsButton").disabled = true;
+  const requested = fieldValue("vscodePath");
+  try {
+    const result = await invoke("detect_tools", { requested });
+    if (attempt !== toolsCheck || requested !== fieldValue("vscodePath")) return;
+    for (const [id, key] of rows) {
+      $(id).textContent = result[key].message;
+      $(id).className = result[key].available ? "ready" : "missing";
+    }
+  } catch (error) {
+    if (attempt === toolsCheck) {
+      for (const [id] of rows) { $(id).textContent = String(error); $(id).className = "missing"; }
+    }
+  } finally {
+    if (attempt === toolsCheck) $("checkToolsButton").disabled = false;
+  }
+}
+
+async function openInstallationGuide(topic) {
+  try { await invoke("open_installation_guide", { topic }); }
+  catch (error) { showError(String(error)); }
+}
+
+function showError(message) {
+  $("errorMessage").textContent = message;
+  $("errorNotice").classList.remove("hidden");
+  $("toast").classList.add("hidden");
+  appendLog(t("error", { message }));
 }
 
 async function refreshRhtlcDetection() {
@@ -418,10 +457,11 @@ async function changeAppLanguage() {
     localStorage.setItem(APP_LANGUAGE_KEY, next);
     renderLanguage();
     await refreshBrowserDetection();
+    await refreshToolsDetection();
     if (fieldValue("connectionMode") === "rhtlc") await refreshRhtlcDetection();
   } catch (error) {
     select.value = appLanguage;
-    showToast(String(error));
+    showError(String(error));
   } finally {
     select.disabled = false;
   }
@@ -444,9 +484,11 @@ async function initialize() {
 
   if (!window.__TAURI_INTERNALS__) {
     await refreshBrowserDetection();
+    await refreshToolsDetection();
     return;
   }
 
+  await listen("tool-error", (event) => showError(String(event.payload)));
   await listen("tunnel-log", (event) => appendLog(event.payload));
   await listen("browser-session-count", (event) => {
     browserSessionCount = Number(event.payload?.count || 0);
@@ -461,11 +503,12 @@ async function initialize() {
     else if (state === "error") {
       connectionAttempt++;
       setConnectionState("error", t("connectionFailed"));
-      showToast(message);
+      showError(message);
       $("logPanel").open = true;
     } else if (state === "connecting") setConnectionState("connecting", message);
   });
   await refreshBrowserDetection();
+  await refreshToolsDetection();
   if (fieldValue("connectionMode") === "rhtlc") await refreshRhtlcDetection();
 }
 
@@ -475,11 +518,13 @@ $("profileSelect").addEventListener("change", (event) => {
   if (profile) applyProfile(profile);
   else resetForm();
   void refreshBrowserDetection();
+  void refreshToolsDetection();
 });
 $("newProfileButton").addEventListener("click", () => {
   if (!connecting && !connected) {
     resetForm();
     void refreshBrowserDetection();
+    void refreshToolsDetection();
   }
 });
 $("saveProfileButton").addEventListener("click", () => saveProfile(false));
@@ -491,6 +536,7 @@ $("confirmDialog").addEventListener("close", () => {
   localStorage.removeItem(LAST_PROFILE_KEY);
   resetForm();
   void refreshBrowserDetection();
+  void refreshToolsDetection();
   showProfileMessage(t("profileDeleted"));
 });
 $("appLanguage").addEventListener("change", changeAppLanguage);
@@ -504,6 +550,17 @@ $("connectionMode").addEventListener("change", () => {
   validate();
   if (fieldValue("connectionMode") === "rhtlc") void refreshRhtlcDetection();
 });
+$("checkToolsButton").addEventListener("click", refreshToolsDetection);
+$("dismissErrorButton").addEventListener("click", () => $("errorNotice").classList.add("hidden"));
+for (const [id, topic] of [["sshHelpButton", "ssh"], ["vscodeHelpButton", "vscode"], ["remoteSshHelpButton", "remote-ssh"]]) {
+  $(id).addEventListener("click", () => openInstallationGuide(topic));
+}
+$("vscodePath").addEventListener("input", () => {
+  toolsCheck++;
+  $("checkToolsButton").disabled = false;
+  $("vscodeReadiness").textContent = t("toolsCheckNeeded");
+  $("vscodeReadiness").className = "";
+});
 $("clearLogButton").addEventListener("click", clearLog);
 for (const id of [...fieldIds, ...ephemeralIds]) $(id).addEventListener("input", validate);
 $("browserPath").addEventListener("input", () => {
@@ -511,4 +568,4 @@ $("browserPath").addEventListener("input", () => {
   $("browserDetection").className = "field-hint";
 });
 
-initialize().catch((error) => showToast(t("initializationError", { message: error })));
+initialize().catch((error) => showError(t("initializationError", { message: error })));

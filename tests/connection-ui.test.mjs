@@ -21,9 +21,10 @@ async function fixture() {
       replaceChildren() {}, add() {}, focus() {} });
   }
   const saved = new Map(), events = new Map(), calls = [];
-  let resolveStart, resolveTool;
+  let resolveStart, resolveTool, rejectTool;
+  let dependencies = { ssh: { available: false, message: "Install OpenSSH" }, vscode: { available: true, message: "Ready" }, remoteSsh: { available: false, message: "Install Remote - SSH" } };
   const start = new Promise(resolve => { resolveStart = resolve; });
-  const tool = new Promise(resolve => { resolveTool = resolve; });
+  const tool = new Promise((resolve, reject) => { resolveTool = resolve; rejectTool = reject; });
   const context = vm.createContext({
     document: { getElementById: id => { assert.ok(elements.has(id), id); return elements.get(id); },
       documentElement: {}, querySelector: () => ({ classList: classes() }) },
@@ -33,6 +34,7 @@ async function fixture() {
     applyTranslations() {}, listen: async (name, fn) => events.set(name, fn),
     invoke: async (name, args) => {
       calls.push({ name, args });
+      if (name === 'detect_tools') return dependencies;
       if (name === 'start_connection') return start;
       if (name === 'open_external_tool') return tool;
       return { name: 'Test browser', path: '/test/browser' };
@@ -44,7 +46,7 @@ async function fixture() {
   vm.runInContext(source, context);
   await new Promise(resolve => setImmediate(resolve));
   elements.get('sshIP').value = '192.0.2.10';
-  return { elements, saved, events, calls, resolveStart, resolveTool, run: code => vm.runInContext(code, context) };
+  return { elements, saved, events, calls, resolveStart, resolveTool, rejectTool, setDependencies: value => { dependencies = value; }, run: code => vm.runInContext(code, context) };
 }
 
 test('Connect enables tools without opening a browser, and closing browsers keeps tools active', async () => {
@@ -94,4 +96,29 @@ test('RHTLC dashboard-only profiles omit secrets and require a target before lau
   const pending = f.run('connect()'); f.resolveStart({ socksPort: 1081 }); await pending;
   assert.equal(f.elements.get('openSessionButton').disabled, false);
   assert.equal(f.elements.get('terminalButton').disabled, true);
+});
+
+test('dependency checks run before connecting and can be refreshed after installation', async () => {
+  const f = await fixture();
+  assert.equal(f.calls.some(c => c.name === 'detect_tools'), true);
+  assert.equal(f.calls.some(c => c.name === 'start_connection'), false);
+  assert.equal(f.elements.get('sshReadiness').textContent, 'Install OpenSSH');
+  const ready = { available: true, message: 'Ready' };
+  f.setDependencies({ ssh: ready, vscode: ready, remoteSsh: ready });
+  await f.run('refreshToolsDetection()');
+  assert.equal(f.elements.get('sshReadiness').textContent, 'Ready');
+  assert.equal(f.elements.get('remoteSshReadiness').className, 'ready');
+});
+
+test('launch failures remain visible across language changes and are recorded', async () => {
+  const f = await fixture();
+  const pending = f.run('connect()'); f.resolveStart({ socksPort: 1080 }); await pending;
+  const opening = f.run('openTool("vscode")');
+  f.rejectTool('VS Code exited with code 7'); await opening;
+  assert.equal(f.elements.get('errorNotice').classList.contains('hidden'), false);
+  f.run('renderLanguage()');
+  assert.equal(f.elements.get('errorMessage').textContent, 'VS Code exited with code 7');
+  assert.match(f.elements.get('logOutput').textContent, /VS Code exited with code 7/);
+  f.events.get('tool-error')({ payload: 'A later startup failure' });
+  assert.equal(f.elements.get('errorMessage').textContent, 'A later startup failure');
 });
