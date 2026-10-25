@@ -31,8 +31,8 @@ Use **App language** in the sidebar to switch between **English** and **한국�
 - Connect to training labs without a VPN or a separately installed RHTLC client.
 - Launch Chrome, Chromium, or Edge with the correct SOCKS5 proxy and an isolated browser profile.
 - Open multiple isolated browser sessions on one connection, for example admin and developer logins.
-- Save connection profiles and browser language preferences (English by default).
-- Keep passwords, private-key passphrases, and token-bearing RHTLC URLs out of saved profiles.
+- Save connection profiles, IP addresses, full RHTLC URLs, and browser language preferences (English by default).
+- Keep passwords and private-key passphrases out of saved profiles.
 - Detect OpenShift/RHOAI routes through SSH when the dashboard URL is blank.
 - Open the native Terminal or VS Code against the same lab connection.
 - Keep the connection alive when browser windows close; Disconnect or app exit stops the tunnel and forwarded SSH sessions.
@@ -48,7 +48,9 @@ Use **App language** in the sidebar to switch between **English** and **한국�
 
 The desktop installer includes the small `rhtlc-wstunnel` transport engine. The official Python CLI/GUI, Firefox, and a VPN are not required. Dashboard browsing requires Chrome, Chromium, or Edge. Terminal and VS Code work without a browser. No system proxy settings, existing browser profiles, or official RHTLC/SSH configuration files are changed. Leave the browser profile folder blank to create a temporary profile automatically.
 
-RHTLC URLs are used only for the current connection. Paste a fresh URL when reconnecting. Following the official RHTLC 6.0.2 client's address handling, Remote OCP converts the lab endpoint to `wss://` and removes the portal query, including its token, before starting the transport. Tokens are never passed in process arguments, written to configuration, or included in logs. The public gateway's TLS certificate is verified; private lab hostnames are resolved through the SOCKS tunnel.
+Select **Save profile** to store both the IP address and the complete RHTLC URL, including its token, in the app's local profile storage on this device. Connecting with a named profile also saves these fields. Selecting the profile or reopening the app restores the saved addresses. If a saved RHTLC URL expires or your lab changes, paste the new URL and save the profile again.
+
+Following the official RHTLC 6.0.2 client's address handling, Remote OCP converts the lab endpoint to `wss://` and removes the portal query, including its token, before starting the transport. Although the complete URL is saved in the local profile, tokens are not passed in process arguments, written to transport configuration, or included in logs. The public gateway's TLS certificate is verified; private lab hostnames are resolved through the SOCKS tunnel.
 
 This integration covers dashboard browsing and SSH access through external tools. VPN, RDP, and SFTP interfaces are outside its scope. See the [official RHTLC documentation](https://redhattraining.github.io/RHTLC_Docs/) for those workflows.
 

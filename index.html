@@ -51,7 +51,7 @@
 
         <div class="sidebar-tip">
           <span class="tip-icon">i</span>
-          <p data-i18n="privacyHint">Passwords, key passphrases, and RHTLC tokens are never saved in profiles.</p>
+          <p data-i18n="privacyHint">IP addresses and full RHTLC URLs, including tokens, are saved in profiles on this device. Passwords and key passphrases are not saved.</p>
         </div>
       </aside>
 
@@ -95,7 +95,7 @@
             </label>
             <div id="rhtlcFields" class="hidden">
               <label class="field">
-                <span><span data-i18n="rhtlcURL">RHTLC URL</span> <small data-i18n="thisConnectionOnly">This connection only</small></span>
+                <span><span data-i18n="rhtlcURL">RHTLC URL</span> <small data-i18n="savedInProfile">Saved in profile</small></span>
                 <input id="rhtlcURL" type="password" autocomplete="off" spellcheck="false" placeholder="rhtlc://…/lab?token=…" />
                 <small class="field-hint" data-i18n="rhtlcHint">Select Copy RHTLC URL in the lab portal and paste it here. No separate RHTLC client or VPN is needed.</small>
                 <small class="field-hint" id="rhtlcDetection" aria-live="polite"></small>

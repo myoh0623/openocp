@@ -10,11 +10,11 @@ const t = (key, values) => translate(appLanguage, key, values);
 const PROFILE_KEY = "remoteOcp.connectionProfiles.v2";
 const LAST_PROFILE_KEY = "remoteOcp.lastProfile.v2";
 const fieldIds = [
-  "connectionMode", "profileName", "sshIP", "sshUser", "dashboardURL", "sshPort", "socksPort",
+  "connectionMode", "profileName", "sshIP", "rhtlcURL", "sshUser", "dashboardURL", "sshPort", "socksPort",
   "browserLanguage", "browserPath", "browserProfilePath", "privateKeyPath",
   "keepTemporaryProfile", "insecureTLS", "remoteHost", "remoteUser", "remotePort", "remoteFolder", "vscodePath"
 ];
-const ephemeralIds = ["password", "privateKeyPassphrase", "rhtlcURL"];
+const ephemeralIds = ["password", "privateKeyPassphrase"];
 const $ = (id) => document.getElementById(id);
 let profiles = loadProfiles();
 let selectedProfileId = "";
@@ -243,7 +243,6 @@ async function connect() {
     if (attempt !== connectionAttempt) return;
     $("password").value = "";
     $("privateKeyPassphrase").value = "";
-    $("rhtlcURL").value = "";
     if (disconnectRequested) {
       await invoke("stop_connection");
       return;
