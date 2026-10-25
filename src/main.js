@@ -539,6 +539,11 @@ $("confirmDialog").addEventListener("close", () => {
   showProfileMessage(t("profileDeleted"));
 });
 $("appLanguage").addEventListener("change", changeAppLanguage);
+$("githubLink").addEventListener("click", (event) => {
+  if (!window.__TAURI_INTERNALS__) return;
+  event.preventDefault();
+  void openInstallationGuide("github");
+});
 $("connectButton").addEventListener("click", connect);
 $("openSessionButton").addEventListener("click", () => openTool("browser"));
 $("terminalButton").addEventListener("click", () => openTool("terminal"));
