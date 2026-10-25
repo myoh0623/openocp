@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "vite build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "prepare:rhtlc": "node scripts/prepare-rhtlc.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4"

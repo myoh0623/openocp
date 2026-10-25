@@ -81,7 +81,8 @@
               <label class="field">
                 <span>RHTLC 주소 <small>이번 연결에만 사용</small></span>
                 <input id="rhtlcURL" type="password" autocomplete="off" spellcheck="false" placeholder="rhtlc://…/lab?token=…" />
-                <small class="field-hint">실습 페이지에서 Copy RHTLC URL을 누른 뒤 붙여넣으세요. 공식 RHTLC 클라이언트가 필요합니다.</small>
+                <small class="field-hint">실습 페이지에서 Copy RHTLC URL을 누른 뒤 붙여넣으세요. 별도 RHTLC 클라이언트나 VPN 설치 없이 연결합니다.</small>
+                <small class="field-hint" id="rhtlcDetection" aria-live="polite"></small>
               </label>
             </div>
             <div id="sshFields" class="form-grid">
@@ -153,14 +154,6 @@
               <label class="field full">
                 <span>브라우저 프로필 폴더</span>
                 <input id="browserProfilePath" autocomplete="off" placeholder="비워두면 임시 프로필 사용" />
-              </label>
-              <label class="field full hidden" id="rhtlcPathField">
-                <span>RHTLC 실행 파일 <small>비워두면 자동 탐색</small></span>
-                <span class="input-action-row">
-                  <input id="rhtlcPath" autocomplete="off" placeholder="rhtlc / rhtlc.exe" />
-                  <button class="button subtle compact-action" id="detectRhtlcButton" type="button">경로 확인</button>
-                </span>
-                <small class="field-hint" id="rhtlcDetection" aria-live="polite"></small>
               </label>
               <label class="field full" id="privateKeyField">
                 <span>SSH 개인 키</span>

@@ -37,8 +37,6 @@ struct ConnectionConfig {
     connection_mode: String,
     #[serde(default)]
     rhtlc_url: String,
-    #[serde(default)]
-    rhtlc_path: String,
     ssh_ip: String,
     ssh_port: u16,
     ssh_user: String,
@@ -376,7 +374,6 @@ fn validate_config(config: &mut ConnectionConfig) -> Result<()> {
         }
     } else if config.connection_mode == "rhtlc" {
         config.rhtlc_url = config.rhtlc_url.trim().to_string();
-        config.rhtlc_path = config.rhtlc_path.trim().to_string();
         rhtlc::validate_url(&config.rhtlc_url)?;
     } else {
         bail!("지원하지 않는 접속 방식입니다.");
@@ -1104,8 +1101,8 @@ mod tests {
 }
 
 #[tauri::command]
-fn detect_rhtlc(requested: String) -> std::result::Result<PathBuf, String> {
-    rhtlc::find_cli(requested.trim()).map_err(display_error)
+fn detect_rhtlc() -> std::result::Result<(), String> {
+    rhtlc::find_engine().map(|_| ()).map_err(display_error)
 }
 
 async fn start_rhtlc_connection(
@@ -1114,7 +1111,7 @@ async fn start_rhtlc_connection(
     mut config: ConnectionConfig,
     mut cancel: watch::Receiver<bool>,
 ) -> Result<ConnectionStarted> {
-    let cli = rhtlc::find_cli(&config.rhtlc_path)?;
+    let engine = rhtlc::find_engine()?;
     let browser = find_browser(&config.browser_path)?;
     let dashboard = if config.dashboard_url.is_empty() {
         "https://console-openshift-console.apps.ocp4.example.com/".to_string()
@@ -1123,11 +1120,11 @@ async fn start_rhtlc_connection(
     };
     let (reservation, port) = bind_socks_listener(config.first_socks_port).await?;
     drop(reservation);
-    let mut tunnel = rhtlc::Connection::new(cli, port);
+    let mut tunnel = rhtlc::Connection::new(engine, port);
     emit_status(&app, "connecting", "RHTLC로 실습 환경에 연결하는 중…");
     emit_log(
         &app,
-        "공식 RHTLC 클라이언트로 연결합니다. 주소의 인증 토큰은 기록하지 않습니다.",
+        "내장 RHTLC 엔진으로 연결합니다. 별도 클라이언트나 VPN 설치가 필요하지 않습니다.",
     );
     let preparation = {
         let work = async {
@@ -1139,9 +1136,6 @@ async fn start_rhtlc_connection(
         tokio::select! {
             result = &mut work => result,
             _ = cancel.changed() => {
-                // Let the bounded CLI operation register its daemon before disconnecting
-                // our SKU. Killing the CLI mid-startup could orphan that daemon.
-                let _ = work.await;
                 Err(anyhow!("연결을 취소했습니다."))
             },
         }
@@ -1213,7 +1207,7 @@ async fn start_rhtlc_connection(
 
 async fn watch_rhtlc(
     app: AppHandle,
-    tunnel: rhtlc::Connection,
+    mut tunnel: rhtlc::Connection,
     initial: BrowserInstance,
     mut incoming: mpsc::UnboundedReceiver<BrowserInstance>,
     stop: watch::Sender<bool>,
@@ -1222,7 +1216,6 @@ async fn watch_rhtlc(
     let mut browsers = JoinSet::new();
     spawn_browser_watcher(&mut browsers, app.clone(), initial, stopped.clone());
     emit_browser_count(&app, 1);
-    let mut health = tokio::time::interval(Duration::from_secs(5));
     let mut failed = false;
     loop {
         if *stopped.borrow() {
@@ -1242,12 +1235,10 @@ async fn watch_rhtlc(
                 }
                 emit_browser_count(&app, browsers.len());
             }
-            _ = health.tick() => {
-                if !matches!(timeout(Duration::from_secs(2), TcpStream::connect((Ipv4Addr::LOCALHOST, tunnel.port))).await, Ok(Ok(_))) {
-                    failed = true;
-                    emit_log(&app, "RHTLC 프록시가 종료되었습니다.");
-                    break;
-                }
+            _ = tunnel.wait() => {
+                failed = true;
+                emit_log(&app, "내장 RHTLC 엔진이 종료되었습니다.");
+                break;
             }
         }
     }
@@ -1260,10 +1251,7 @@ async fn watch_rhtlc(
     }
     if let Err(error) = tunnel.disconnect().await {
         failed = true;
-        emit_log(
-            &app,
-            format!("{error} 공식 RHTLC 앱에서 remote-ocp 연결을 확인해 주세요."),
-        );
+        emit_log(&app, error.to_string());
     }
     app.state::<AppState>().runtime.lock().await.take();
     emit_browser_count(&app, 0);

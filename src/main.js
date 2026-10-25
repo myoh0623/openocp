@@ -6,7 +6,7 @@ import { version as appVersion } from "../package.json";
 const PROFILE_KEY = "remoteOcp.connectionProfiles.v2";
 const LAST_PROFILE_KEY = "remoteOcp.lastProfile.v2";
 const fieldIds = [
-  "connectionMode", "rhtlcPath", "profileName", "sshIP", "sshUser", "dashboardURL", "sshPort", "socksPort",
+  "connectionMode", "profileName", "sshIP", "sshUser", "dashboardURL", "sshPort", "socksPort",
   "browserLanguage", "browserPath", "browserProfilePath", "privateKeyPath",
   "keepTemporaryProfile", "insecureTLS"
 ];
@@ -120,7 +120,7 @@ function deleteSelectedProfile() {
 function validate(forSave = false) {
   const rhtlc = $("connectionMode").value === "rhtlc";
   $("sshFields").classList.toggle("hidden", rhtlc);
-  for (const id of ["rhtlcFields", "rhtlcPathField"]) $(id).classList.toggle("hidden", !rhtlc);
+  $("rhtlcFields").classList.toggle("hidden", !rhtlc);
   for (const id of ["privateKeyField", "privateKeyPassphraseField"]) $(id).classList.toggle("hidden", rhtlc);
   $("dashboardHint").textContent = rhtlc
     ? "비워두면 기본 실습 OpenShift 콘솔을 엽니다. RHOAI 등 다른 주소는 직접 입력하세요."
@@ -154,8 +154,10 @@ function validate(forSave = false) {
   const profileIssue = issue;
   if (!issue && rhtlc && !connected && !connecting) {
     try {
-      const parsed = new URL(fieldValue("rhtlcURL"));
-      if (parsed.protocol !== "rhtlc:" || !parsed.hostname || !parsed.searchParams.get("token") || parsed.username || parsed.password || parsed.hash) throw new Error();
+      const input = fieldValue("rhtlcURL");
+      if (!input.startsWith("rhtlc://") || /[\x00-\x1f\x7f]/.test(input)) throw new Error();
+      const parsed = new URL(input.replace(/^rhtlc:\/\/(?:https:\/\/|wss:\/\/)?/, "wss://"));
+      if (parsed.protocol !== "wss:" || !parsed.hostname || !parsed.searchParams.get("token") || parsed.username || parsed.password || parsed.hash) throw new Error();
     } catch {
       issue = "Copy RHTLC URL로 복사한 rhtlc:// 주소 전체를 붙여넣어 주세요.";
     }
@@ -166,7 +168,6 @@ function validate(forSave = false) {
     $(id).disabled = locked;
   }
   $("detectBrowserButton").disabled = locked;
-  $("detectRhtlcButton").disabled = locked;
   $("connectButton").disabled = Boolean(issue) || locked;
   $("saveProfileButton").disabled = Boolean(profileIssue) || locked;
   $("deleteProfileButton").disabled = locked || !selectedProfileId;
@@ -178,7 +179,6 @@ function buildConnectionConfig() {
   return {
     connectionMode: fieldValue("connectionMode"),
     rhtlcUrl: fieldValue("rhtlcURL"),
-    rhtlcPath: fieldValue("rhtlcPath"),
     sshIp: fieldValue("sshIP"),
     sshPort: Number(fieldValue("sshPort")),
     sshUser: fieldValue("sshUser"),
@@ -279,12 +279,12 @@ async function refreshBrowserDetection(showResultToast = false) {
 async function refreshRhtlcDetection() {
   const hint = $("rhtlcDetection");
   if (!window.__TAURI_INTERNALS__) {
-    hint.textContent = "앱에서 실행하면 설치된 RHTLC를 확인합니다.";
+    hint.textContent = "데스크톱 앱에 RHTLC 연결 기능이 포함되어 있습니다.";
     return;
   }
   try {
-    const path = await invoke("detect_rhtlc", { requested: fieldValue("rhtlcPath") });
-    hint.textContent = path;
+    await invoke("detect_rhtlc");
+    hint.textContent = "내장 RHTLC 엔진 준비 완료";
     hint.className = "field-hint success";
   } catch (error) {
     hint.textContent = String(error);
@@ -406,7 +406,6 @@ $("connectionMode").addEventListener("change", () => {
   validate();
   if (fieldValue("connectionMode") === "rhtlc") void refreshRhtlcDetection();
 });
-$("detectRhtlcButton").addEventListener("click", refreshRhtlcDetection);
 $("clearLogButton").addEventListener("click", clearLog);
 for (const id of [...fieldIds, ...ephemeralIds]) $(id).addEventListener("input", validate);
 $("browserPath").addEventListener("input", () => {

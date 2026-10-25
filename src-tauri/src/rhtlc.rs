@@ -1,11 +1,18 @@
-//! Adapter for the official RHTLC CLI. Never log its output: it may contain tokens.
+//! Own the bundled RHTLC transport directly; no installed CLI or shared daemon.
 use super::*;
 use std::process::Stdio;
 
-pub(crate) fn validate_url(value: &str) -> Result<()> {
-    let url = Url::parse(value).map_err(|_| anyhow!("RHTLC 주소를 확인해 주세요."))?;
-    if url.scheme() != "rhtlc"
-        || url.host_str().is_none()
+/// Match RHTLC 6.0.2: use the lab's WebSocket endpoint and discard the portal
+/// query (including its token) before launching the transport. Never log input.
+fn endpoint(value: &str) -> Result<Url> {
+    let invalid = || anyhow!("Copy RHTLC URL로 복사한 rhtlc:// 주소 전체를 붙여넣어 주세요.");
+    let address = value.strip_prefix("rhtlc://").ok_or_else(invalid)?;
+    let address = address
+        .strip_prefix("https://")
+        .or_else(|| address.strip_prefix("wss://"))
+        .unwrap_or(address);
+    let mut url = Url::parse(&format!("wss://{address}")).map_err(|_| invalid())?;
+    if url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
         || url.fragment().is_some()
@@ -14,137 +21,132 @@ pub(crate) fn validate_url(value: &str) -> Result<()> {
             .any(|(key, value)| key == "token" && !value.is_empty())
         || value.chars().any(char::is_control)
     {
-        bail!("Copy RHTLC URL로 복사한 rhtlc:// 주소 전체를 붙여넣어 주세요.");
+        return Err(invalid());
     }
-    Ok(())
+    url.set_query(None);
+    if url.path() == "/" || url.path().is_empty() {
+        url.set_path(
+            if url.host_str().unwrap().ends_with(".labs.ole.redhat.com") {
+                "/lab"
+            } else {
+                "/socks5"
+            },
+        );
+    }
+    Ok(url)
 }
 
-pub(crate) fn find_cli(requested: &str) -> Result<PathBuf> {
-    if !requested.is_empty() {
-        let path = expand_home(requested);
-        if path.is_file() {
-            return Ok(path);
-        }
-        bail!("선택한 RHTLC 실행 파일을 찾을 수 없습니다.");
+pub(crate) fn validate_url(value: &str) -> Result<()> {
+    endpoint(value).map(|_| ())
+}
+
+pub(crate) fn find_engine() -> Result<PathBuf> {
+    // Tauri copies the sidecar beside the executable in both dev and bundles.
+    // Never search PATH or the separately installed official client's folders.
+    let name = if cfg!(windows) {
+        "rhtlc-wstunnel.exe"
+    } else {
+        "rhtlc-wstunnel"
+    };
+    let path = env::current_exe()?
+        .parent()
+        .context("앱 위치를 확인하지 못했습니다.")?
+        .join(name);
+    if !path.is_file() {
+        bail!("앱에 포함된 RHTLC 엔진을 찾을 수 없습니다. Remote OCP를 다시 설치해 주세요.");
     }
-    let mut paths = vec![];
-    let name = if cfg!(windows) { "rhtlc.exe" } else { "rhtlc" };
-    if let Some(value) = env::var_os("PATH") {
-        paths.extend(env::split_paths(&value).map(|p| p.join(name)));
-    }
-    if cfg!(target_os = "macos") {
-        paths.extend([
-            PathBuf::from("/opt/homebrew/bin/rhtlc"),
-            PathBuf::from("/usr/local/bin/rhtlc"),
-        ]);
-        let arch = if cfg!(target_arch = "aarch64") {
-            "arm64"
-        } else {
-            "x86_64"
-        };
-        let mut roots = vec![PathBuf::from("/Applications")];
-        if let Some(home) = home_directory() {
-            roots.push(home.join("Applications"));
-        }
-        for root in roots {
-            paths.push(root.join(format!(
-                "RHTLC-GUI.app/Contents/Resources/cli/rhtlc-macos-{arch}"
-            )));
-        }
-    } else if cfg!(windows) {
-        for key in ["LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)"] {
-            if let Some(root) = env::var_os(key) {
-                paths.push(PathBuf::from(&root).join("Programs/RHTLC/rhtlc.exe"));
-                paths.push(PathBuf::from(root).join("RHTLC/rhtlc.exe"));
-            }
-        }
-    }
-    paths.into_iter().find(|p| p.is_file()).ok_or_else(|| anyhow!(
-        "RHTLC가 설치되어 있지 않습니다. 공식 RHTLC 클라이언트를 설치하거나 고급 설정에서 실행 파일 경로를 지정해 주세요."
-    ))
+    Ok(path)
 }
 
 fn command(path: &Path) -> Command {
     let mut cmd = Command::new(path);
     cmd.kill_on_drop(true);
+    // Some terminals set NO_COLOR=1; this engine expects a boolean string.
+    cmd.env("NO_COLOR", "true");
     #[cfg(windows)]
     cmd.creation_flags(0x08000000);
     cmd
 }
 
 pub(crate) struct Connection {
-    cli: PathBuf,
-    sku: String,
+    engine: PathBuf,
+    child: Option<Child>,
     pub(crate) port: u16,
 }
 
 impl Connection {
-    pub(crate) fn new(cli: PathBuf, port: u16) -> Self {
+    pub(crate) fn new(engine: PathBuf, port: u16) -> Self {
         Self {
-            cli,
+            engine,
+            child: None,
             port,
-            sku: format!("remote-ocp-{}", Uuid::new_v4()),
         }
+    }
+
+    fn launch_command(&self, url: &str) -> Result<Command> {
+        let endpoint = endpoint(url)?;
+        let mut cmd = command(&self.engine);
+        cmd.args([
+            "--log-lvl",
+            "OFF",
+            "--nb-worker-threads",
+            "2",
+            "client",
+            "--tls-verify-certificate",
+            "-L",
+            &format!("socks5://127.0.0.1:{}", self.port),
+            endpoint.as_str(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+        Ok(cmd)
     }
 
     pub(crate) async fn connect(&mut self, url: &str) -> Result<()> {
-        // stdin keeps the token out of process command lines and shell history.
-        let mut child = command(&self.cli)
-            .args([
-                "connect",
-                "--sku",
-                &self.sku,
-                "--port",
-                &self.port.to_string(),
-            ])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("RHTLC 실행 파일을 시작하지 못했습니다.")?;
-        let mut stdin = child
-            .stdin
-            .take()
-            .context("RHTLC 입력을 준비하지 못했습니다.")?;
-        stdin.write_all(url.as_bytes()).await?;
-        stdin.write_all(b"\n").await?;
-        drop(stdin);
-        let output = timeout(Duration::from_secs(45), child.wait_with_output())
-            .await
-            .context(
-                "RHTLC 연결 시간이 초과되었습니다. 실습 실행 상태와 주소를 확인해 주세요.",
-            )??;
-        if !output.status.success() {
-            bail!(
-                "RHTLC 연결에 실패했습니다. 실습이 실행 중인지 확인하고 새 주소를 복사해 주세요."
-            );
+        if self.child.is_some() {
+            bail!("RHTLC 연결이 이미 실행 중입니다.");
         }
-        // The CLI can allocate a different port if the requested one is occupied.
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if let Some(port) = Regex::new(r"127\.0\.0\.1:(\d+)")?
-            .captures_iter(&stdout)
-            .last()
-            .and_then(|m| m[1].parse::<u16>().ok())
-        {
-            self.port = port;
-        }
+        self.child = Some(
+            self.launch_command(url)?
+                .spawn()
+                .context("내장 RHTLC 엔진을 시작하지 못했습니다.")?,
+        );
+        timeout(Duration::from_secs(10), async {
+            loop {
+                if self.child.as_mut().unwrap().try_wait()?.is_some() {
+                    bail!("내장 RHTLC 엔진이 종료되었습니다. 프록시 포트를 확인해 주세요.");
+                }
+                if TcpStream::connect((Ipv4Addr::LOCALHOST, self.port))
+                    .await
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .context("내장 RHTLC 엔진 시작 시간이 초과되었습니다.")?
+    }
+
+    pub(crate) async fn wait(&mut self) -> Result<()> {
+        self.child
+            .as_mut()
+            .context("RHTLC 엔진이 실행 중이 아닙니다.")?
+            .wait()
+            .await?;
         Ok(())
     }
 
-    pub(crate) async fn disconnect(&self) -> Result<()> {
-        let status = timeout(
-            Duration::from_secs(15),
-            command(&self.cli)
-                .args(["disconnect", "--sku", &self.sku])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status(),
-        )
-        .await
-        .context("RHTLC 종료 시간이 초과되었습니다.")??;
-        if !status.success() {
-            bail!("RHTLC 연결을 종료하지 못했습니다.");
+    pub(crate) async fn disconnect(&mut self) -> Result<()> {
+        if let Some(mut child) = self.child.take() {
+            if child.try_wait()?.is_none() {
+                child
+                    .kill()
+                    .await
+                    .context("내장 RHTLC 엔진을 종료하지 못했습니다.")?;
+            }
         }
         Ok(())
     }
@@ -183,58 +185,110 @@ pub(crate) async fn probe(port: u16, dashboard: &str) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn validates_links_without_exposing_tokens() {
-        assert!(validate_url("rhtlc://lab.example.com/lab?token=secret&sku=DO180").is_ok());
+    fn normalizes_portal_links_without_exposing_tokens() {
+        for value in [
+            "rhtlc://lab.labs.ole.redhat.com/lab?token=secret&sku=DO180",
+            "rhtlc://https://lab.labs.ole.redhat.com/?token=secret",
+            "rhtlc://wss://lab.labs.ole.redhat.com/lab?token=secret",
+        ] {
+            assert_eq!(
+                endpoint(value).unwrap().as_str(),
+                "wss://lab.labs.ole.redhat.com/lab"
+            );
+        }
+        assert_eq!(
+            endpoint("rhtlc://lab.example.com:8443/custom?token=secret")
+                .unwrap()
+                .as_str(),
+            "wss://lab.example.com:8443/custom"
+        );
         for value in [
             "https://lab.example.com/lab?token=secret",
             "rhtlc://lab/lab",
             "rhtlc://u:p@lab/lab?token=secret",
             "rhtlc://lab/lab?token=",
             "rhtlc://lab/lab?token=secret\n",
+            "rhtlc://lab/lab?token=secret#fragment",
         ] {
-            let error = validate_url(value).unwrap_err().to_string();
-            assert!(!error.contains("secret"));
+            assert!(
+                !validate_url(value)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("secret")
+            );
         }
-    }
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn cli_uses_stdin_allocated_port_and_scoped_disconnect() {
-        use std::os::unix::fs::PermissionsExt;
-        let directory = env::temp_dir().join(format!("remote-ocp-cli-test-{}", Uuid::new_v4()));
-        std::fs::create_dir(&directory).unwrap();
-        let cli = directory.join("rhtlc");
-        std::fs::write(
-            &cli,
-            r#"#!/bin/sh
-case "$3" in remote-ocp-*) ;; *) exit 9;; esac
-if [ "$1" = "disconnect" ]; then
-  [ "$#" = 3 ] && [ "$2" = "--sku" ] || exit 8
-  exit 0
-fi
-[ "$#" = 5 ] && [ "$1" = "connect" ] && [ "$4" = "--port" ] || exit 7
-IFS= read -r link
-case "$link" in
-  *bad-token*) echo "error: bad-token" >&2; exit 1;;
-  'rhtlc://lab.example.com/lab?token=test-only') echo 'SOCKS5 proxy: 127.0.0.1:11001';;
-  *) exit 6;;
-esac
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let mut connection = Connection::new(cli, 1080);
-        connection
-            .connect("rhtlc://lab.example.com/lab?token=test-only")
-            .await
+        let connection = Connection::new("engine".into(), 1080);
+        let cmd = connection
+            .launch_command("rhtlc://lab/lab?token=secret")
             .unwrap();
-        assert_eq!(connection.port, 11001);
-        let error = connection
-            .connect("rhtlc://lab.example.com/lab?token=bad-token")
+        let args: Vec<_> = cmd
+            .as_std()
+            .get_args()
+            .map(|s| s.to_str().unwrap())
+            .collect();
+        assert!(!format!("{args:?}").contains("secret"));
+        assert!(args.contains(&"--tls-verify-certificate"));
+        assert!(args.contains(&"socks5://127.0.0.1:1080"));
+        assert_eq!(args.last(), Some(&"wss://lab/lab"));
+    }
+
+    #[tokio::test]
+    async fn bundled_engine_starts_stops_and_drops_without_a_cli() {
+        let suffix = if cfg!(windows) { ".exe" } else { "" };
+        let engine = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "binaries/rhtlc-wstunnel-{}{suffix}",
+            env!("TAURI_ENV_TARGET_TRIPLE")
+        ));
+        let version = command(&engine).arg("--version").output().await.unwrap();
+        assert!(version.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&version.stdout).trim(),
+            "rhtlc-wstunnel 6.0.1"
+        );
+        for explicit_stop in [true, false] {
+            let reservation = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+            let port = reservation.local_addr().unwrap().port();
+            drop(reservation);
+            let mut connection = Connection::new(engine.clone(), port);
+            // No external traffic: the engine opens upstream only on a SOCKS request.
+            connection
+                .connect("rhtlc://127.0.0.1:9/lab?token=test-only")
+                .await
+                .unwrap();
+            assert!(
+                connection
+                    .child
+                    .as_mut()
+                    .unwrap()
+                    .try_wait()
+                    .unwrap()
+                    .is_none()
+            );
+            if explicit_stop {
+                connection.disconnect().await.unwrap();
+            }
+            drop(connection);
+            timeout(Duration::from_secs(5), async {
+                while TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+                    .await
+                    .is_ok()
+                {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
             .await
-            .unwrap_err();
-        assert!(!error.to_string().contains("bad-token"));
-        connection.disconnect().await.unwrap();
-        std::fs::remove_dir_all(directory).unwrap();
+            .expect("owned proxy should close on disconnect or cancellation/drop");
+        }
+        let mut missing = Connection::new(PathBuf::from("missing-rhtlc-test-engine"), 1080);
+        assert!(
+            !missing
+                .connect("rhtlc://lab/lab?token=secret")
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("secret")
+        );
+        missing.disconnect().await.unwrap();
     }
 
     #[tokio::test]

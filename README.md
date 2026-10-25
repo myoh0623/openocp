@@ -1,90 +1,82 @@
 # Remote OCP 2.1
 
-Remote OCP는 IP·SSH 또는 RHTLC 주소로 연결해 OpenShift 또는 RHOAI 대시보드를 여는 macOS/Windows 데스크톱 앱입니다.
+Remote OCP opens OpenShift and RHOAI dashboards through either an IP/SSH connection or a Red Hat Training Lab Connector (`rhtlc://`) URL. One Rust + Tauri codebase builds the macOS and Windows desktop apps.
 
-하나의 **Rust + Tauri** 코드베이스에서 macOS 앱과 Windows 실행 파일을 함께 만듭니다.
+## Features
 
-## 주요 기능
+- Choose IP/SSH or RHTLC URL connection mode.
+- Connect to training labs without a VPN or a separately installed RHTLC client.
+- Launch Chrome, Chromium, or Edge with the correct SOCKS5 proxy and an isolated browser profile.
+- Open multiple isolated browser sessions on one connection, for example admin and developer logins.
+- Save connection profiles and browser language preferences (English by default).
+- Keep passwords, private-key passphrases, and token-bearing RHTLC URLs out of saved profiles.
+- Detect OpenShift/RHOAI routes through SSH when the dashboard URL is blank.
+- Stop the owned tunnel when the last owned browser process exits, on Disconnect, or when the app exits.
 
-- IP·SSH / RHTLC 주소 접속 방식 선택
-- Copy RHTLC URL 주소로 공식 RHTLC 프록시 연결 후 독립 Chrome/Edge 자동 실행
-- SSH IP, 사용자, 포트와 대시보드 URL 입력
-- 대시보드 URL을 비워두면 원격 서버에서 OpenShift/RHOAI Route 자동 탐색
-- 여러 접속 정보를 프로필로 저장하고 다음 실행 때 다시 사용
-- 비밀번호와 개인 키 암호는 저장하지 않음
-- 내장 Rust SSH 클라이언트와 SOCKS5 프록시 사용
-- Google Chrome, Chromium 또는 Microsoft Edge 자동 탐색 및 실행 경로 표시
-- 프로필마다 English 또는 한국어 브라우저 언어 저장(기본값 English)
-- 같은 터널에서 로그인 정보가 분리된 독립 브라우저를 여러 개 실행
-- 마지막 브라우저가 닫히면 SSH 연결도 자동 종료
-- macOS와 Windows에서 같은 화면과 기능 사용
+## Connect with an RHTLC URL
 
-## RHTLC 주소로 연결 (VPN 불필요)
+1. Start your lab in the Red Hat training portal and select **Copy RHTLC URL**.
+2. In Remote OCP, choose **RHTLC URL** connection mode and paste the complete address.
+3. Enter the dashboard URL, or leave it blank to open the default training console: `https://console-openshift-console.apps.ocp4.example.com/`. Enter the URL explicitly for RHOAI or a different cluster.
+4. Select **Open dashboard**. Remote OCP verifies that the dashboard can be reached through the tunnel before opening the browser.
+5. Use **+ Isolated browser** for another independent login session. Select **Disconnect** to close the owned browsers and tunnel.
 
-1. [공식 설치 안내](https://redhattraining.github.io/RHTLC_Docs/)에 따라 RHTLC를 설치합니다. macOS는 Homebrew CLI 또는 RHTLC-GUI에 포함된 CLI, Windows는 공식 설치 패키지의 `rhtlc.exe`를 사용합니다. 현재 통합은 RHTLC 6.0.2를 기준으로 검증합니다.
-2. Red Hat 실습 페이지에서 **Copy RHTLC URL**을 누릅니다.
-3. Remote OCP에서 연결 방법을 **RHTLC 주소 · VPN 없이 접속**으로 선택하고 주소를 붙여넣습니다.
-4. 대시보드 URL을 입력하거나 비워둡니다. 이 방식에서 빈 주소는 기본 실습 OpenShift 콘솔(`https://console-openshift-console.apps.ocp4.example.com/`)을 사용합니다. RHOAI 또는 다른 클러스터는 주소를 직접 입력합니다.
-5. **대시보드 열기**를 누르면 프록시 경유 접속을 확인하고 Chrome/Chromium/Edge를 자동으로 엽니다. Firefox의 프로필이나 시스템 VPN·프록시 설정을 직접 바꿀 필요가 없습니다.
-6. 마지막 독립 브라우저를 닫거나 연결을 종료하면 Remote OCP가 만든 RHTLC 연결만 정리합니다.
+The desktop installer includes the small `rhtlc-wstunnel` transport engine. The official Python CLI/GUI, Firefox, and a VPN are not required. Chrome, Chromium, or Edge must be installed. No system proxy settings, existing browser profiles, or official RHTLC/SSH configuration files are changed. Leave the browser profile folder blank to create a temporary profile automatically.
 
-고급 설정의 **RHTLC 실행 파일 → 경로 확인**에서 설치 경로를 확인할 수 있습니다. 자동으로 찾지 못하면 CLI 실행 파일 경로를 지정합니다. 브라우저 프로필 폴더는 비워두면 임시 폴더를 자동 생성합니다.
+RHTLC URLs are used only for the current connection. Paste a fresh URL when reconnecting. Following the official RHTLC 6.0.2 client's address handling, Remote OCP converts the lab endpoint to `wss://` and removes the portal query, including its token, before starting the transport. Tokens are never passed in process arguments, written to configuration, or included in logs. The public gateway's TLS certificate is verified; private lab hostnames are resolved through the SOCKS tunnel.
 
-접속 방식과 실행 파일 경로는 프로필에 저장하지만, 토큰이 포함된 RHTLC 주소는 저장하지 않습니다. 다시 연결할 때 새 주소를 붙여넣으세요. 주소는 명령행 인수가 아닌 표준 입력으로 공식 CLI에 전달하며 CLI 원문 출력도 앱 로그에 남기지 않습니다. 공식 RHTLC 자체는 연결 관리를 위해 자체 설정과 SSH 설정 항목을 생성할 수 있습니다.
+This integration covers dashboard browsing. RHTLC's VPN, RDP, SFTP, and SSH configuration features are outside its scope. See the [official RHTLC documentation](https://redhattraining.github.io/RHTLC_Docs/) for those workflows.
 
-## IP·SSH로 연결
+## Connect with IP/SSH
 
-1. 운영체제에 맞는 Remote OCP 앱을 실행합니다.
-2. SSH IP와 사용자 이름을 입력합니다.
-3. 비밀번호 인증이면 SSH 비밀번호를 입력합니다. 개인 키가 있으면 비밀번호를 비워둘 수 있습니다.
-4. 대시보드 URL은 필요할 때만 입력합니다. 비워두면 자동으로 탐색합니다.
-5. **대시보드 열기**를 누릅니다.
-6. 다른 계정으로 동시에 로그인하려면 **＋ 독립 브라우저**를 누릅니다.
-7. 열린 브라우저를 모두 닫으면 터널도 종료됩니다.
+1. Choose **IP/SSH** and enter the SSH IP address and user.
+2. Enter a password, or use an SSH private key. A private-key passphrase can be supplied in advanced settings.
+3. Enter a dashboard URL, or leave it blank for remote route discovery.
+4. Select **Open dashboard**.
 
-프로필에는 SSH 비밀번호와 개인 키 암호가 포함되지 않습니다.
+Each additional browser gets a separate temporary profile and independent cookies. Browser language preferences apply to new sessions. Advanced settings let you inspect the detected browser or select its executable manually. SSH mode still requires network access to the specified IP, including a VPN if the environment requires one.
 
-각 독립 브라우저는 별도의 임시 프로필을 사용하므로 쿠키와 로그인 세션을 공유하지 않습니다. 예를 들어 한 창에는 `admin`, 다른 창에는 `developer`로 로그인할 수 있습니다. 브라우저 언어 설정은 새로 여는 독립 브라우저에도 동일하게 적용됩니다.
+## Download builds
 
-Chrome 계열 브라우저는 일반적인 설치 위치와 시스템 경로에서 자동으로 찾습니다. 고급 설정의 **경로 확인**에서 실제로 선택된 브라우저와 실행 파일 위치를 확인할 수 있습니다. 자동 탐색이 되지 않으면 같은 입력란에 실행 파일 경로를 직접 입력합니다.
+In GitHub, open **Actions → Build macOS and Windows** and select a successful run:
 
-## 빌드 결과 받기
+- `Remote-OCP-macOS`: Universal macOS app and DMG (Apple Silicon and Intel).
+- `Remote-OCP-Windows`: Windows x64 EXE and MSI installers.
 
-GitHub 저장소의 **Actions → Build macOS and Windows**에서 실행 결과를 선택하면 다음 파일을 받을 수 있습니다.
+Both platforms are built for pull requests and pushes to `main`. Windows may prompt about the bundled tunnel executable under local firewall/security policies.
 
-- `Remote-OCP-macOS`: macOS 앱/DMG
-- `Remote-OCP-Windows`: Windows 설치용 EXE/MSI
+## Build locally
 
-`main` 브랜치에 변경 사항이 올라갈 때마다 두 운영체제용 빌드가 자동으로 생성됩니다.
-
-## 로컬 빌드
-
-필요한 항목:
-
-- Node.js 20 이상
-- Rust stable
-- macOS에서 macOS 앱을 만들 때 Xcode Command Line Tools
-- Windows에서 Windows 앱을 만들 때 Microsoft C++ Build Tools와 WebView2
+Requirements: Node.js 22+, Rust stable, and the platform's Tauri prerequisites (Xcode Command Line Tools on macOS; Microsoft C++ Build Tools and WebView2 on Windows).
 
 ```bash
-npm install
+npm ci
 npm run tauri build
 ```
 
-이 저장소에서 사용하는 프로젝트 전용 Rust 도구가 `.tools`에 준비되어 있다면 다음 스크립트도 사용할 수 있습니다.
+The Tauri dev/build hooks run `npm run prepare:rhtlc` automatically. This downloads the pinned **rhtlc-wstunnel 6.0.1** release for the target, verifies a hardcoded SHA-256 checksum, and stages the transport as a Tauri sidecar. Universal macOS builds combine the verified ARM64 and x64 binaries using `lipo`. Downloads happen at build time only; installed apps use the bundled executable without downloading or searching for another client.
 
 ```bash
-./build-desktop.sh
+# macOS Universal
+npm run tauri build -- --target universal-apple-darwin
+
+# Prepare the host engine before invoking Cargo directly
+npm run prepare:rhtlc
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-빌드 결과는 `src-tauri/target/release/bundle` 아래에 생성됩니다.
+If project-local Rust tools are available in `.tools`, `./build-desktop.sh` uses them. Bundles are written under `src-tauri/target/<target>/release/bundle`, or `src-tauri/target/release/bundle` for a default-target build.
 
-## 프로젝트 구성
+The transport adds approximately 9.6 MiB on macOS ARM64 and 9.9 MiB on Windows x64 before installer compression. Universal macOS includes both architectures. A single owned transport process is shared by all browser sessions and uses two worker threads. Actual memory use depends on traffic and browser sessions; no fixed RAM guarantee is made.
 
-- `src/`: 두 운영체제가 공유하는 화면과 프로필 관리
-- `src-tauri/src/`: Rust SSH, SOCKS5, URL 탐색 및 브라우저 제어
-- `src-tauri/src/rhtlc.rs`: 공식 RHTLC CLI 탐색·연결·종료와 프록시 통신 확인
-- `src-tauri/icons/`: macOS/Windows 앱 아이콘
-- `.github/workflows/`: macOS/Windows 자동 빌드
+Source and redistribution notices are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt), which is included in the app bundle. Binary hashes and download URLs are pinned in [scripts/prepare-rhtlc.mjs](scripts/prepare-rhtlc.mjs). Remote OCP is an independent project.
 
-실습용 `*.example.com` 주소는 브라우저 인증서 오류를 자동으로 허용합니다. 다른 주소는 고급 설정에서 직접 선택할 수 있습니다.
+## Project layout
+
+- `src/`: Shared UI and connection profiles.
+- `src-tauri/src/`: Rust SSH, SOCKS5, route discovery, and browser lifecycle management.
+- `src-tauri/src/rhtlc.rs`: Bundled transport lifecycle, URL handling, and SOCKS connectivity checks.
+- `scripts/prepare-rhtlc.mjs`: Verified transport preparation for macOS and Windows builds.
+- `.github/workflows/`: Desktop builds and connection tests.
+
+Training dashboard addresses under `*.example.com` automatically allow browser certificate errors. Other dashboard addresses require the explicit advanced setting. This browser setting does not disable TLS verification for the public RHTLC gateway.

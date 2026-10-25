@@ -4,9 +4,9 @@
   "version": "2.1.0",
   "identifier": "com.omy.remoteocp",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run prepare:rhtlc && npm run dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run prepare:rhtlc && npm run build",
     "frontendDist": "../dist-web"
   },
   "app": {
@@ -30,7 +30,7 @@
     "targets": "all",
     "category": "DeveloperTool",
     "shortDescription": "Remote OpenShift dashboard connector",
-    "longDescription": "Open an OpenShift or RHOAI dashboard through a local SSH SOCKS tunnel.",
+    "longDescription": "Open an OpenShift or RHOAI dashboard through an SSH SOCKS tunnel or the bundled RHTLC transport.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -44,8 +44,17 @@
       "hardenedRuntime": false
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "allowDowngrades": false
+    },
+    "externalBin": [
+      "binaries/rhtlc-wstunnel"
+    ],
+    "resources": {
+      "../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
     }
   }
 }
