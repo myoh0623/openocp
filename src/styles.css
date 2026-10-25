@@ -109,6 +109,21 @@ input:disabled, select:disabled {
   background: rgba(0, 0, 0, 0.035);
 }
 .sidebar-tip p { margin: 0; font-size: 10px; line-height: 1.45; }
+.github-link {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 12px;
+  padding: 8px 4px;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.github-link span { font-size: 12px; font-weight: 650; }
+.github-link small { color: var(--muted); font-size: 10px; }
+.github-link:hover span { text-decoration: underline; }
+.github-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tip-icon {
   display: grid;
   flex: 0 0 auto;

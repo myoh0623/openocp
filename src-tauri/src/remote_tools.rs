@@ -666,6 +666,7 @@ pub(crate) fn detect_tools(requested: &str) -> ToolAvailability {
 
 pub(crate) fn help_url(topic: &str) -> Result<&'static str> {
     match topic {
+        "github" => Ok("https://github.com/myoh0623/openocp"),
         "ssh" => Ok(
             "https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-install-firstuse",
         ),
