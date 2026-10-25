@@ -1,5 +1,24 @@
 # Remote OCP 2.2
 
+[English](README.md) | [한국어](README.ko.md)
+
+## Download
+
+**[Download installers from GitHub Actions](https://github.com/myoh0623/openocp/actions/workflows/build-desktop.yml?query=branch%3Amain)**
+
+1. Sign in to GitHub and open the link above.
+2. Select the latest successful **main** build, then scroll to **Artifacts**.
+3. Download the package for your OS, extract the ZIP, and open the installer:
+
+| OS | Artifact | Installer |
+| --- | --- | --- |
+| macOS (Apple Silicon and Intel) | `Remote-OCP-macOS` | `.dmg` |
+| Windows x64 | `Remote-OCP-Windows` | `.exe` or `.msi` |
+
+Build artifacts are kept for 14 days. Choose a newer successful build if an older download has expired.
+
+## About
+
 Remote OCP opens OpenShift/RHOAI dashboards, SSH terminals, and VS Code Remote - SSH sessions through either an IP/SSH connection or a Red Hat Training Lab Connector (`rhtlc://`) URL. One Rust + Tauri codebase builds the macOS and Windows desktop apps.
 
 ## App language
@@ -59,18 +78,11 @@ Launcher failures appear in a dismissible error notice and the activity log. Imm
 
 Closing a browser, terminal, or editor does **not** end the connection. Select **Disconnect**, or exit Remote OCP, when finished. Disconnect closes the app-owned relay and active SSH streams and removes session launch files. Terminal and VS Code windows remain open so unsaved work is not discarded. Reconnect using the tool buttons in Remote OCP; old window connection targets belong to the previous session.
 
-## Download builds
-
-In GitHub, open **Actions → Build macOS and Windows** and select a successful run:
-
-- `Remote-OCP-macOS`: Universal macOS app and DMG (Apple Silicon and Intel).
-- `Remote-OCP-Windows`: Windows x64 EXE and MSI installers.
-
-Both platforms are built for pull requests and pushes to `main`. Windows may prompt about the bundled tunnel executable under local firewall/security policies.
-
 ## Build locally
 
 Requirements: Node.js 22+, Rust stable, and the platform's Tauri prerequisites (Xcode Command Line Tools on macOS; Microsoft C++ Build Tools and WebView2 on Windows).
+
+Both platforms are built for pull requests and pushes to `main`. Windows may prompt about the bundled tunnel executable under local firewall/security policies.
 
 ```bash
 npm ci
