@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,49 +14,57 @@
           <img class="app-logo" src="/src/assets/AppIcon.png" alt="" />
           <div>
             <h1>Remote OCP</h1>
-            <span id="platformBadge">Desktop</span>
+            <span id="platformBadge">Desktop · v2.2</span>
           </div>
         </div>
 
+        <label class="compact-field app-language">
+          <span data-i18n="appLanguage">App language</span>
+          <select id="appLanguage">
+            <option value="en" lang="en">English</option>
+            <option value="ko" lang="ko">한국어</option>
+          </select>
+        </label>
+
         <section class="profile-panel">
           <div class="sidebar-heading">
-            <span>접속 프로필</span>
-            <button class="mini-button" id="newProfileButton" type="button" aria-label="새 프로필" title="새 프로필">＋</button>
+            <span data-i18n="profiles">Connection profiles</span>
+            <button class="mini-button" id="newProfileButton" type="button" aria-label="New profile" data-i18n-aria-label="newProfile" title="New profile" data-i18n-title="newProfile">＋</button>
           </div>
 
-          <label class="sr-only" for="profileSelect">저장된 프로필</label>
+          <label class="sr-only" for="profileSelect" data-i18n="savedProfiles">Saved profiles</label>
           <select id="profileSelect">
-            <option value="">새 프로필</option>
+            <option value="" data-i18n="newProfile">New profile</option>
           </select>
 
           <label class="compact-field">
-            <span>이름</span>
-            <input id="profileName" autocomplete="off" placeholder="교육 클러스터" />
+            <span data-i18n="name">Name</span>
+            <input id="profileName" autocomplete="off" placeholder="Training cluster" data-i18n-placeholder="profilePlaceholder" />
           </label>
 
           <div class="profile-actions">
-            <button class="button subtle grow" id="saveProfileButton" type="button">프로필 저장</button>
-            <button class="button danger-quiet icon-button" id="deleteProfileButton" type="button" title="선택한 프로필 삭제" aria-label="선택한 프로필 삭제">⌫</button>
+            <button class="button subtle grow" id="saveProfileButton" type="button" data-i18n="saveProfile">Save profile</button>
+            <button class="button danger-quiet icon-button" id="deleteProfileButton" type="button" title="Delete selected profile" data-i18n-title="deleteSelectedProfile" aria-label="Delete selected profile" data-i18n-aria-label="deleteSelectedProfile">⌫</button>
           </div>
           <span class="save-message" id="profileMessage" aria-live="polite"></span>
         </section>
 
         <div class="sidebar-tip">
           <span class="tip-icon">i</span>
-          <p>비밀번호와 개인 키 암호는 프로필에 저장하지 않습니다.</p>
+          <p data-i18n="privacyHint">Passwords, key passphrases, and RHTLC tokens are never saved in profiles.</p>
         </div>
       </aside>
 
       <section class="workspace">
         <header class="workspace-header">
           <div>
-            <h2>연결 설정</h2>
-            <p>원격 서버를 통해 OpenShift 대시보드를 엽니다.</p>
+            <h2 data-i18n="connectionSettings">Connection settings</h2>
+            <p data-i18n="connectionIntro">Open an OpenShift dashboard through a remote connection.</p>
           </div>
           <div class="header-actions">
-            <button class="button subtle hidden" id="openSessionButton" type="button">＋ 독립 브라우저</button>
-            <button class="button stop hidden" id="disconnectButton" type="button">연결 종료</button>
-            <button class="button primary" id="connectButton" type="button">대시보드 열기 <span>↗</span></button>
+            <button class="button subtle hidden" id="openSessionButton" type="button" data-i18n="openSession">＋ Isolated browser</button>
+            <button class="button stop hidden" id="disconnectButton" type="button" data-i18n="disconnect">Disconnect</button>
+            <button class="button primary" id="connectButton" type="button" data-i18n="connect">Open dashboard ↗</button>
           </div>
         </header>
 
@@ -65,27 +73,42 @@
             <div class="section-heading">
               <span class="section-number">1</span>
               <div>
-                <h3>SSH 서버</h3>
-                <p>접속할 원격 서버 정보를 입력하세요.</p>
+                <h3 data-i18n="connectionType">Connection type</h3>
+                <p data-i18n="connectionHint">Connect using IP/SSH or an RHTLC URL.</p>
               </div>
             </div>
 
-            <div class="form-grid">
+            <label class="field connection-mode">
+              <span data-i18n="connectionMethod">Connection method</span>
+              <select id="connectionMode">
+                <option value="ssh">IP · SSH</option>
+                <option value="rhtlc" data-i18n="rhtlcOption">RHTLC URL · No VPN required</option>
+              </select>
+            </label>
+            <div id="rhtlcFields" class="hidden">
+              <label class="field">
+                <span><span data-i18n="rhtlcURL">RHTLC URL</span> <small data-i18n="thisConnectionOnly">This connection only</small></span>
+                <input id="rhtlcURL" type="password" autocomplete="off" spellcheck="false" placeholder="rhtlc://…/lab?token=…" />
+                <small class="field-hint" data-i18n="rhtlcHint">Select Copy RHTLC URL in the lab portal and paste it here. No separate RHTLC client or VPN is needed.</small>
+                <small class="field-hint" id="rhtlcDetection" aria-live="polite"></small>
+              </label>
+            </div>
+            <div id="sshFields" class="form-grid">
               <label class="field wide">
-                <span>IP 주소</span>
+                <span data-i18n="ipAddress">IP address</span>
                 <input id="sshIP" inputmode="decimal" autocomplete="off" placeholder="192.0.2.10" />
               </label>
               <label class="field">
-                <span>사용자</span>
+                <span data-i18n="user">User</span>
                 <input id="sshUser" autocomplete="username" value="student" placeholder="student" />
               </label>
               <label class="field port-field">
-                <span>포트</span>
+                <span data-i18n="port">Port</span>
                 <input id="sshPort" type="number" min="1" max="65535" value="22" />
               </label>
               <label class="field wide">
-                <span>비밀번호 <small>저장하지 않음</small></span>
-                <input id="password" type="password" autocomplete="current-password" placeholder="키 인증이면 비워두세요" />
+                <span><span data-i18n="password">Password</span> <small data-i18n="notSaved">Not saved</small></span>
+                <input id="password" type="password" autocomplete="current-password" placeholder="Leave blank for key authentication" data-i18n-placeholder="passwordPlaceholder" />
               </label>
             </div>
             <div class="validation-message" id="validationMessage" aria-live="polite"></div>
@@ -95,12 +118,12 @@
             <div class="section-heading">
               <span class="section-number">2</span>
               <div>
-                <h3>대시보드</h3>
-                <p>주소를 비워두면 원격 서버에서 자동으로 찾습니다.</p>
+                <h3 data-i18n="dashboard">Dashboard</h3>
+                <p id="dashboardHint">Leave blank to discover the address on the remote server.</p>
               </div>
             </div>
             <label class="field">
-              <span>대시보드 URL <small>선택 사항</small></span>
+              <span><span data-i18n="dashboardURL">Dashboard URL</span> <small data-i18n="optional">Optional</small></span>
               <input id="dashboardURL" inputmode="url" autocomplete="off" placeholder="https://console-openshift-console.apps…" />
             </label>
           </section>
@@ -110,47 +133,47 @@
               <div class="section-heading">
                 <span class="section-icon">⋯</span>
                 <div>
-                  <h3>고급 설정</h3>
-                  <p>포트, 브라우저와 개인 키 설정</p>
+                  <h3 data-i18n="advanced">Advanced settings</h3>
+                  <p data-i18n="advancedHint">Ports, browser, and private key settings</p>
                 </div>
               </div>
               <span class="chevron">⌄</span>
             </summary>
             <div class="advanced-content form-grid two-column">
               <label class="field">
-                <span>SOCKS 시작 포트</span>
+                <span data-i18n="socksPort">Starting SOCKS port</span>
                 <input id="socksPort" type="number" min="1024" max="65515" value="1080" />
               </label>
               <label class="field">
-                <span>브라우저 언어</span>
+                <span data-i18n="browserLanguage">Browser language</span>
                 <select id="browserLanguage">
-                  <option value="en-US">English (기본)</option>
+                  <option value="en-US" data-i18n="englishDefault">English (default)</option>
                   <option value="ko-KR">한국어</option>
                 </select>
               </label>
               <label class="field full">
-                <span>브라우저 실행 파일 <small>비워두면 자동 탐색</small></span>
+                <span><span data-i18n="browserExecutable">Browser executable</span> <small data-i18n="autoDetect">Leave blank to detect automatically</small></span>
                 <span class="input-action-row">
                   <input id="browserPath" autocomplete="off" placeholder="Chrome / Chromium / Edge" />
-                  <button class="button subtle compact-action" id="detectBrowserButton" type="button">경로 확인</button>
+                  <button class="button subtle compact-action" id="detectBrowserButton" type="button" data-i18n="checkPath">Check path</button>
                 </span>
-                <small class="field-hint" id="browserDetection" aria-live="polite">설치된 브라우저를 확인하는 중…</small>
+                <small class="field-hint" id="browserDetection" aria-live="polite">Checking installed browsers…</small>
               </label>
               <label class="field full">
-                <span>브라우저 프로필 폴더</span>
-                <input id="browserProfilePath" autocomplete="off" placeholder="비워두면 임시 프로필 사용" />
+                <span data-i18n="browserProfile">Browser profile folder</span>
+                <input id="browserProfilePath" autocomplete="off" placeholder="Leave blank for a temporary profile" data-i18n-placeholder="browserProfilePlaceholder" />
               </label>
-              <label class="field full">
-                <span>SSH 개인 키</span>
-                <input id="privateKeyPath" autocomplete="off" placeholder="~/.ssh/id_ed25519 자동 검색" />
+              <label class="field full" id="privateKeyField">
+                <span data-i18n="privateKey">SSH private key</span>
+                <input id="privateKeyPath" autocomplete="off" placeholder="Automatically check ~/.ssh/id_ed25519" data-i18n-placeholder="privateKeyPlaceholder" />
               </label>
-              <label class="field">
-                <span>개인 키 암호 <small>저장하지 않음</small></span>
-                <input id="privateKeyPassphrase" type="password" autocomplete="off" placeholder="암호화된 키에만 입력" />
+              <label class="field" id="privateKeyPassphraseField">
+                <span><span data-i18n="passphrase">Key passphrase</span> <small data-i18n="notSaved">Not saved</small></span>
+                <input id="privateKeyPassphrase" type="password" autocomplete="off" placeholder="For encrypted keys only" data-i18n-placeholder="passphrasePlaceholder" />
               </label>
               <div class="toggle-column">
-                <label class="toggle"><input id="keepTemporaryProfile" type="checkbox" /><span>임시 프로필 보관</span></label>
-                <label class="toggle"><input id="insecureTLS" type="checkbox" /><span>교육용 인증서 오류 허용</span></label>
+                <label class="toggle"><input id="keepTemporaryProfile" type="checkbox" /><span data-i18n="keepProfile">Keep temporary profile</span></label>
+                <label class="toggle"><input id="insecureTLS" type="checkbox" /><span data-i18n="allowCertificates">Allow training certificate errors</span></label>
               </div>
             </div>
           </details>
@@ -160,25 +183,25 @@
               <div class="section-heading">
                 <span class="section-icon log-symbol">›_</span>
                 <div>
-                  <h3>실행 기록</h3>
-                  <p>연결 문제를 확인할 때 사용합니다.</p>
+                  <h3 data-i18n="activityLog">Activity log</h3>
+                  <p data-i18n="activityHint">Use this to troubleshoot connections.</p>
                 </div>
               </div>
               <span class="chevron">⌄</span>
             </summary>
             <div class="log-toolbar">
-              <span>비밀번호는 기록하지 않습니다.</span>
-              <button class="text-button" id="clearLogButton" type="button">지우기</button>
+              <span data-i18n="logPrivacy">Passwords are never logged.</span>
+              <button class="text-button" id="clearLogButton" type="button" data-i18n="clear">Clear</button>
             </div>
-            <pre id="logOutput">아직 실행 기록이 없습니다.</pre>
+            <pre id="logOutput">No activity yet.</pre>
           </details>
         </div>
 
         <section class="status-bar" id="connectionPanel">
           <div class="status-icon" id="statusIcon"><span></span></div>
           <div class="status-copy">
-            <strong id="statusText">연결 안 됨</strong>
-            <span id="statusTarget">SSH IP를 입력하세요</span>
+            <strong id="statusText">Not connected</strong>
+            <span id="statusTarget">Enter an SSH IP address</span>
           </div>
         </section>
       </section>
@@ -186,11 +209,11 @@
 
     <dialog id="confirmDialog">
       <form method="dialog">
-        <h3>프로필을 삭제할까요?</h3>
-        <p id="confirmText">삭제한 프로필은 복구할 수 없습니다.</p>
+        <h3 data-i18n="deleteQuestion">Delete this profile?</h3>
+        <p id="confirmText" data-i18n="deleteWarning">Deleted profiles cannot be restored.</p>
         <div class="dialog-actions">
-          <button class="button subtle" value="cancel">취소</button>
-          <button class="button danger" value="confirm">삭제</button>
+          <button class="button subtle" value="cancel" data-i18n="cancel">Cancel</button>
+          <button class="button danger" value="confirm" data-i18n="delete">Delete</button>
         </div>
       </form>
     </dialog>

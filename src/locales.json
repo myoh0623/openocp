@@ -1,0 +1,370 @@
+{
+  "appLanguage": {
+    "en": "App language",
+    "ko": "앱 언어"
+  },
+  "profiles": {
+    "en": "Connection profiles",
+    "ko": "접속 프로필"
+  },
+  "newProfile": {
+    "en": "New profile",
+    "ko": "새 프로필"
+  },
+  "savedProfiles": {
+    "en": "Saved profiles",
+    "ko": "저장된 프로필"
+  },
+  "name": {
+    "en": "Name",
+    "ko": "이름"
+  },
+  "profilePlaceholder": {
+    "en": "Training cluster",
+    "ko": "교육 클러스터"
+  },
+  "saveProfile": {
+    "en": "Save profile",
+    "ko": "프로필 저장"
+  },
+  "deleteSelectedProfile": {
+    "en": "Delete selected profile",
+    "ko": "선택한 프로필 삭제"
+  },
+  "privacyHint": {
+    "en": "Passwords, key passphrases, and RHTLC tokens are never saved in profiles.",
+    "ko": "비밀번호, 개인 키 암호와 RHTLC 주소의 인증 토큰은 프로필에 저장하지 않습니다."
+  },
+  "connectionSettings": {
+    "en": "Connection settings",
+    "ko": "연결 설정"
+  },
+  "connectionIntro": {
+    "en": "Open an OpenShift dashboard through a remote connection.",
+    "ko": "원격 서버를 통해 OpenShift 대시보드를 엽니다."
+  },
+  "openSession": {
+    "en": "＋ Isolated browser",
+    "ko": "＋ 독립 브라우저"
+  },
+  "disconnect": {
+    "en": "Disconnect",
+    "ko": "연결 종료"
+  },
+  "connect": {
+    "en": "Open dashboard ↗",
+    "ko": "대시보드 열기 ↗"
+  },
+  "connectionType": {
+    "en": "Connection type",
+    "ko": "접속 방식"
+  },
+  "connectionHint": {
+    "en": "Connect using IP/SSH or an RHTLC URL.",
+    "ko": "IP·SSH 또는 RHTLC 주소로 연결하세요."
+  },
+  "connectionMethod": {
+    "en": "Connection method",
+    "ko": "연결 방법"
+  },
+  "rhtlcOption": {
+    "en": "RHTLC URL · No VPN required",
+    "ko": "RHTLC 주소 · VPN 없이 접속"
+  },
+  "rhtlcURL": {
+    "en": "RHTLC URL",
+    "ko": "RHTLC 주소"
+  },
+  "thisConnectionOnly": {
+    "en": "This connection only",
+    "ko": "이번 연결에만 사용"
+  },
+  "rhtlcHint": {
+    "en": "Select Copy RHTLC URL in the lab portal and paste it here. No separate RHTLC client or VPN is needed.",
+    "ko": "실습 페이지에서 Copy RHTLC URL을 누른 뒤 붙여넣으세요. 별도 RHTLC 클라이언트나 VPN 설치 없이 연결합니다."
+  },
+  "ipAddress": {
+    "en": "IP address",
+    "ko": "IP 주소"
+  },
+  "user": {
+    "en": "User",
+    "ko": "사용자"
+  },
+  "port": {
+    "en": "Port",
+    "ko": "포트"
+  },
+  "password": {
+    "en": "Password",
+    "ko": "비밀번호"
+  },
+  "notSaved": {
+    "en": "Not saved",
+    "ko": "저장하지 않음"
+  },
+  "passwordPlaceholder": {
+    "en": "Leave blank for key authentication",
+    "ko": "키 인증이면 비워두세요"
+  },
+  "dashboard": {
+    "en": "Dashboard",
+    "ko": "대시보드"
+  },
+  "dashboardURL": {
+    "en": "Dashboard URL",
+    "ko": "대시보드 URL"
+  },
+  "optional": {
+    "en": "Optional",
+    "ko": "선택 사항"
+  },
+  "dashboardHintSSH": {
+    "en": "Leave blank to discover the address on the remote server.",
+    "ko": "주소를 비워두면 원격 서버에서 자동으로 찾습니다."
+  },
+  "dashboardHintRhtlc": {
+    "en": "Leave blank for the standard training OpenShift console. Enter a URL for RHOAI or another dashboard.",
+    "ko": "비워두면 기본 실습 OpenShift 콘솔을 엽니다. RHOAI 등 다른 주소는 직접 입력하세요."
+  },
+  "advanced": {
+    "en": "Advanced settings",
+    "ko": "고급 설정"
+  },
+  "advancedHint": {
+    "en": "Ports, browser, and private key settings",
+    "ko": "포트, 브라우저와 개인 키 설정"
+  },
+  "socksPort": {
+    "en": "Starting SOCKS port",
+    "ko": "SOCKS 시작 포트"
+  },
+  "browserLanguage": {
+    "en": "Browser language",
+    "ko": "브라우저 언어"
+  },
+  "englishDefault": {
+    "en": "English (default)",
+    "ko": "English (기본)"
+  },
+  "browserExecutable": {
+    "en": "Browser executable",
+    "ko": "브라우저 실행 파일"
+  },
+  "autoDetect": {
+    "en": "Leave blank to detect automatically",
+    "ko": "비워두면 자동 탐색"
+  },
+  "checkPath": {
+    "en": "Check path",
+    "ko": "경로 확인"
+  },
+  "browserProfile": {
+    "en": "Browser profile folder",
+    "ko": "브라우저 프로필 폴더"
+  },
+  "browserProfilePlaceholder": {
+    "en": "Leave blank for a temporary profile",
+    "ko": "비워두면 임시 프로필 사용"
+  },
+  "privateKey": {
+    "en": "SSH private key",
+    "ko": "SSH 개인 키"
+  },
+  "privateKeyPlaceholder": {
+    "en": "Automatically check ~/.ssh/id_ed25519",
+    "ko": "~/.ssh/id_ed25519 자동 검색"
+  },
+  "passphrase": {
+    "en": "Key passphrase",
+    "ko": "개인 키 암호"
+  },
+  "passphrasePlaceholder": {
+    "en": "For encrypted keys only",
+    "ko": "암호화된 키에만 입력"
+  },
+  "keepProfile": {
+    "en": "Keep temporary profile",
+    "ko": "임시 프로필 보관"
+  },
+  "allowCertificates": {
+    "en": "Allow training certificate errors",
+    "ko": "교육용 인증서 오류 허용"
+  },
+  "activityLog": {
+    "en": "Activity log",
+    "ko": "실행 기록"
+  },
+  "activityHint": {
+    "en": "Use this to troubleshoot connections.",
+    "ko": "연결 문제를 확인할 때 사용합니다."
+  },
+  "logPrivacy": {
+    "en": "Passwords are never logged.",
+    "ko": "비밀번호는 기록하지 않습니다."
+  },
+  "clear": {
+    "en": "Clear",
+    "ko": "지우기"
+  },
+  "noLogs": {
+    "en": "No activity yet.",
+    "ko": "아직 실행 기록이 없습니다."
+  },
+  "disconnected": {
+    "en": "Not connected",
+    "ko": "연결 안 됨"
+  },
+  "enterIP": {
+    "en": "Enter an SSH IP address",
+    "ko": "SSH IP를 입력하세요"
+  },
+  "deleteQuestion": {
+    "en": "Delete this profile?",
+    "ko": "프로필을 삭제할까요?"
+  },
+  "deleteWarning": {
+    "en": "Deleted profiles cannot be restored.",
+    "ko": "삭제한 프로필은 복구할 수 없습니다."
+  },
+  "cancel": {
+    "en": "Cancel",
+    "ko": "취소"
+  },
+  "delete": {
+    "en": "Delete",
+    "ko": "삭제"
+  },
+  "profileDefaultName": {
+    "en": "Profile {number}",
+    "ko": "프로필 {number}"
+  },
+  "profileLoaded": {
+    "en": "Loaded profile “{name}”.",
+    "ko": "‘{name}’ 프로필을 불러왔습니다."
+  },
+  "profileSaved": {
+    "en": "Saved profile “{name}”.",
+    "ko": "‘{name}’ 프로필을 저장했습니다."
+  },
+  "profileNewHint": {
+    "en": "Enter a new profile.",
+    "ko": "새 프로필을 입력하세요."
+  },
+  "profileDeleted": {
+    "en": "Profile deleted.",
+    "ko": "프로필을 삭제했습니다."
+  },
+  "selected": {
+    "en": "selected",
+    "ko": "선택한"
+  },
+  "deleteConfirm": {
+    "en": "Delete profile “{name}”? The current fields will also be reset.",
+    "ko": "‘{name}’ 프로필을 삭제합니다. 현재 입력값도 초기화됩니다."
+  },
+  "invalidIP": {
+    "en": "Enter a valid SSH IPv4 address.",
+    "ko": "올바른 SSH IPv4 주소를 입력해 주세요."
+  },
+  "invalidUser": {
+    "en": "Check the SSH username.",
+    "ko": "SSH 사용자 이름을 확인해 주세요."
+  },
+  "invalidSSHPort": {
+    "en": "SSH port must be between 1 and 65535.",
+    "ko": "SSH 포트는 1~65535 사이여야 합니다."
+  },
+  "invalidSocksPort": {
+    "en": "SOCKS port must be between 1024 and 65515.",
+    "ko": "SOCKS 포트는 1024~65515 사이여야 합니다."
+  },
+  "chooseBrowserLanguage": {
+    "en": "Select a browser language.",
+    "ko": "브라우저 언어를 선택해 주세요."
+  },
+  "invalidDashboard": {
+    "en": "Dashboard URL must start with http:// or https://.",
+    "ko": "대시보드 URL은 http:// 또는 https://로 시작해야 합니다."
+  },
+  "invalidRhtlc": {
+    "en": "Paste the complete rhtlc:// address from Copy RHTLC URL.",
+    "ko": "Copy RHTLC URL로 복사한 rhtlc:// 주소 전체를 붙여넣어 주세요."
+  },
+  "connecting": {
+    "en": "Preparing connection…",
+    "ko": "연결을 준비하는 중…"
+  },
+  "preparingLog": {
+    "en": "Preparing connection…",
+    "ko": "연결을 준비합니다…"
+  },
+  "connected": {
+    "en": "Connected · 127.0.0.1:{port}",
+    "ko": "연결됨 · 127.0.0.1:{port}"
+  },
+  "openedDashboard": {
+    "en": "Opened {url} in the browser.",
+    "ko": "브라우저에서 {url} 주소를 열었습니다."
+  },
+  "cancelled": {
+    "en": "Connection cancelled.",
+    "ko": "연결을 취소했습니다."
+  },
+  "connectionFailed": {
+    "en": "Connection failed",
+    "ko": "연결 실패"
+  },
+  "unknownError": {
+    "en": "An unknown error occurred.",
+    "ko": "알 수 없는 오류가 발생했습니다."
+  },
+  "error": {
+    "en": "Error: {message}",
+    "ko": "오류: {message}"
+  },
+  "disconnecting": {
+    "en": "Disconnecting…",
+    "ko": "연결을 종료하는 중…"
+  },
+  "sessionOpened": {
+    "en": "Opened an isolated browser. You can sign in with another account.",
+    "ko": "독립 브라우저를 열었습니다. 다른 계정으로 로그인할 수 있습니다."
+  },
+  "detectBrowserPreview": {
+    "en": "Installed browsers are detected in the desktop app.",
+    "ko": "앱에서 실행하면 설치된 브라우저를 자동으로 확인합니다."
+  },
+  "detectingBrowser": {
+    "en": "Checking installed browsers…",
+    "ko": "설치된 브라우저를 확인하는 중…"
+  },
+  "browserAvailable": {
+    "en": "{name} is available.",
+    "ko": "{name}을(를) 사용할 수 있습니다."
+  },
+  "rhtlcPreview": {
+    "en": "RHTLC connectivity is included in the desktop app.",
+    "ko": "데스크톱 앱에 RHTLC 연결 기능이 포함되어 있습니다."
+  },
+  "rhtlcReady": {
+    "en": "Built-in RHTLC engine ready",
+    "ko": "내장 RHTLC 엔진 준비 완료"
+  },
+  "browserCount": {
+    "en": " · Browsers: {count}",
+    "ko": " · 브라우저 {count}개"
+  },
+  "rhtlcTarget": {
+    "en": "RHTLC · No VPN required{sessions}",
+    "ko": "RHTLC · VPN 없이 접속{sessions}"
+  },
+  "checkPathHint": {
+    "en": "Select Check path to verify the browser executable.",
+    "ko": "‘경로 확인’을 눌러 사용할 수 있는지 확인하세요."
+  },
+  "initializationError": {
+    "en": "App initialization error: {message}",
+    "ko": "앱 초기화 오류: {message}"
+  }
+}
