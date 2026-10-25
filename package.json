@@ -1,6 +1,7 @@
 {
   "name": "remote-ocp",
   "private": true,
+  "license": "MIT",
   "version": "2.2.0",
   "type": "module",
   "scripts": {

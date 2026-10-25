@@ -4,6 +4,7 @@ version = "2.2.0"
 description = "OpenShift dashboard access through an SSH SOCKS tunnel"
 authors = ["omy"]
 edition = "2024"
+license = "MIT"
 
 [lib]
 name = "remote_ocp_lib"

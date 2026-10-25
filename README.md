@@ -84,3 +84,7 @@ Source and redistribution notices are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_N
 - `.github/workflows/`: Desktop builds and connection tests.
 
 Training dashboard addresses under `*.example.com` automatically allow browser certificate errors. Other dashboard addresses require the explicit advanced setting. This browser setting does not disable TLS verification for the public RHTLC gateway.
+
+## License
+
+Remote OCP is licensed under the [MIT License](LICENSE). Third-party dependencies retain their respective licenses. The bundled `rhtlc-wstunnel` engine is distributed under BSD-3-Clause; its original copyright, license conditions, and disclaimer are preserved in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). Both files are included in the app bundle.

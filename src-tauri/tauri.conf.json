@@ -29,6 +29,7 @@
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
+    "license": "MIT",
     "shortDescription": "Remote OpenShift dashboard connector",
     "longDescription": "Open an OpenShift or RHOAI dashboard through an SSH SOCKS tunnel or the bundled RHTLC transport.",
     "icon": [
@@ -54,7 +55,8 @@
       "binaries/rhtlc-wstunnel"
     ],
     "resources": {
-      "../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
+      "../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt",
+      "../LICENSE": "LICENSE"
     }
   }
 }
