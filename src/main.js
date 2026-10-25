@@ -1,8 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
+import { applyTranslations, normalizeLanguage, translate } from "./i18n.js";
 import { version as appVersion } from "../package.json";
 
+const APP_LANGUAGE_KEY = "remoteOcp.appLanguage";
+let appLanguage = normalizeLanguage(localStorage.getItem(APP_LANGUAGE_KEY));
+const t = (key, values) => translate(appLanguage, key, values);
 const PROFILE_KEY = "remoteOcp.connectionProfiles.v2";
 const LAST_PROFILE_KEY = "remoteOcp.lastProfile.v2";
 const fieldIds = [
@@ -19,6 +23,9 @@ let connecting = false;
 let disconnectRequested = false;
 let browserSessionCount = 0;
 let toastTimer;
+let connectionState = "idle";
+let activeSocksPort = null;
+let hasLog = false;
 
 function loadProfiles() {
   try {
@@ -30,7 +37,7 @@ function loadProfiles() {
 }
 
 function persistProfiles() {
-  profiles.sort((a, b) => a.name.localeCompare(b.name, "ko", { sensitivity: "base" }));
+  profiles.sort((a, b) => a.name.localeCompare(b.name, appLanguage, { sensitivity: "base" }));
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profiles));
 }
 
@@ -48,14 +55,14 @@ function setField(id, value) {
 function currentProfile(id = selectedProfileId || crypto.randomUUID()) {
   const profile = { id };
   for (const field of fieldIds) profile[field] = fieldValue(field);
-  profile.name = profile.profileName || `프로필 ${profiles.length + 1}`;
+  profile.name = profile.profileName || t("profileDefaultName", { number: profiles.length + 1 });
   delete profile.profileName;
   return profile;
 }
 
 function refreshProfileSelect() {
   const select = $("profileSelect");
-  select.replaceChildren(new Option("새 프로필", ""));
+  select.replaceChildren(new Option(t("newProfile"), ""));
   for (const profile of profiles) select.add(new Option(profile.name, profile.id));
   select.value = selectedProfileId;
   $("deleteProfileButton").disabled = connecting || connected || !selectedProfileId;
@@ -71,7 +78,7 @@ function applyProfile(profile) {
   for (const field of ephemeralIds) setField(field, "");
   localStorage.setItem(LAST_PROFILE_KEY, profile.id);
   refreshProfileSelect();
-  showProfileMessage(`‘${profile.name}’ 프로필을 불러왔습니다.`);
+  showProfileMessage(t("profileLoaded", { name: profile.name }));
   validate();
 }
 
@@ -85,7 +92,7 @@ function resetForm() {
   setField("browserLanguage", "en-US");
   for (const id of ephemeralIds) setField(id, "");
   refreshProfileSelect();
-  showProfileMessage("새 프로필을 입력하세요.");
+  showProfileMessage(t("profileNewHint"));
   validate();
   $("sshIP").focus();
 }
@@ -106,14 +113,14 @@ function saveProfile(silent = false) {
   persistProfiles();
   localStorage.setItem(LAST_PROFILE_KEY, id);
   refreshProfileSelect();
-  showProfileMessage(`‘${profile.name}’ 프로필을 저장했습니다.`);
+  showProfileMessage(t("profileSaved", { name: profile.name }));
   return true;
 }
 
 function deleteSelectedProfile() {
   if (connecting || connected || !selectedProfileId) return;
   const profile = profiles.find((item) => item.id === selectedProfileId);
-  $("confirmText").textContent = `‘${profile?.name || "선택한"}’ 프로필을 삭제합니다. 현재 입력값도 초기화됩니다.`;
+  $("confirmText").textContent = t("deleteConfirm", { name: profile?.name || t("selected") });
   $("confirmDialog").showModal();
 }
 
@@ -123,8 +130,8 @@ function validate(forSave = false) {
   $("rhtlcFields").classList.toggle("hidden", !rhtlc);
   for (const id of ["privateKeyField", "privateKeyPassphraseField"]) $(id).classList.toggle("hidden", rhtlc);
   $("dashboardHint").textContent = rhtlc
-    ? "비워두면 기본 실습 OpenShift 콘솔을 엽니다. RHOAI 등 다른 주소는 직접 입력하세요."
-    : "주소를 비워두면 원격 서버에서 자동으로 찾습니다.";
+    ? t("dashboardHintRhtlc")
+    : t("dashboardHintSSH");
   const ip = $("sshIP").value.trim();
   const user = $("sshUser").value.trim();
   const sshPort = Number($("sshPort").value);
@@ -134,21 +141,21 @@ function validate(forSave = false) {
   let issue = "";
   const octets = ip.split(".");
   if (!rhtlc && (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255))) {
-    issue = "올바른 SSH IPv4 주소를 입력해 주세요.";
+    issue = t("invalidIP");
   } else if (!rhtlc && !/^[A-Za-z0-9._-]+$/.test(user)) {
-    issue = "SSH 사용자 이름을 확인해 주세요.";
+    issue = t("invalidUser");
   } else if (!rhtlc && (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535)) {
-    issue = "SSH 포트는 1~65535 사이여야 합니다.";
+    issue = t("invalidSSHPort");
   } else if (!Number.isInteger(socksPort) || socksPort < 1024 || socksPort > 65515) {
-    issue = "SOCKS 포트는 1024~65515 사이여야 합니다.";
+    issue = t("invalidSocksPort");
   } else if (!["en-US", "ko-KR"].includes(browserLanguage)) {
-    issue = "브라우저 언어를 선택해 주세요.";
+    issue = t("chooseBrowserLanguage");
   } else if (url) {
     try {
       const parsed = new URL(url);
       if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
     } catch {
-      issue = "대시보드 URL은 http:// 또는 https://로 시작해야 합니다.";
+      issue = t("invalidDashboard");
     }
   }
   const profileIssue = issue;
@@ -159,7 +166,7 @@ function validate(forSave = false) {
       const parsed = new URL(input.replace(/^rhtlc:\/\/(?:https:\/\/|wss:\/\/)?/, "wss://"));
       if (parsed.protocol !== "wss:" || !parsed.hostname || !parsed.searchParams.get("token") || parsed.username || parsed.password || parsed.hash) throw new Error();
     } catch {
-      issue = "Copy RHTLC URL로 복사한 rhtlc:// 주소 전체를 붙여넣어 주세요.";
+      issue = t("invalidRhtlc");
     }
   }
   $("validationMessage").textContent = issue;
@@ -200,9 +207,9 @@ async function connect() {
   if (validate()) return;
   if ($("profileName").value.trim()) saveProfile(true);
   disconnectRequested = false;
-  setConnectionState("connecting", "연결을 준비하는 중…");
+  setConnectionState("connecting", t("connecting"));
   clearLog();
-  appendLog("연결을 준비합니다…");
+  appendLog(t("preparingLog"));
   try {
     const result = await invoke("start_connection", { config: buildConnectionConfig() });
     $("password").value = "";
@@ -212,21 +219,22 @@ async function connect() {
       await invoke("stop_connection");
       return;
     }
+    activeSocksPort = result.socksPort;
     connected = true;
     connecting = false;
-    setConnectionState("connected", `연결됨 · 127.0.0.1:${result.socksPort}`);
-    appendLog(`브라우저에서 ${result.dashboardUrl} 주소를 열었습니다.`);
+    setConnectionState("connected", t("connected", { port: result.socksPort }));
+    appendLog(t("openedDashboard", { url: result.dashboardUrl }));
   } catch (error) {
     connected = false;
     connecting = false;
     if (disconnectRequested) {
-      setConnectionState("idle", "연결 안 됨");
-      appendLog("연결을 취소했습니다.");
+      setConnectionState("idle", t("disconnected"));
+      appendLog(t("cancelled"));
       return;
     }
-    setConnectionState("error", "연결 실패");
-    const message = String(error || "알 수 없는 오류가 발생했습니다.");
-    appendLog(`오류: ${message}`);
+    setConnectionState("error", t("connectionFailed"));
+    const message = String(error || t("unknownError"));
+    appendLog(t("error", { message }));
     showToast(message);
     $("logPanel").open = true;
   }
@@ -235,7 +243,7 @@ async function connect() {
 async function disconnect() {
   disconnectRequested = true;
   $("disconnectButton").disabled = true;
-  $("statusText").textContent = "연결을 종료하는 중…";
+  $("statusText").textContent = t("disconnecting");
   try { await invoke("stop_connection"); }
   catch (error) { showToast(String(error)); }
 }
@@ -246,7 +254,7 @@ async function openIsolatedSession() {
   button.disabled = true;
   try {
     await invoke("open_browser_session");
-    showToast("독립 브라우저를 열었습니다. 다른 계정으로 로그인할 수 있습니다.");
+    showToast(t("sessionOpened"));
   } catch (error) {
     showToast(String(error));
   } finally {
@@ -257,18 +265,18 @@ async function openIsolatedSession() {
 async function refreshBrowserDetection(showResultToast = false) {
   const hint = $("browserDetection");
   if (!window.__TAURI_INTERNALS__) {
-    hint.textContent = "앱에서 실행하면 설치된 브라우저를 자동으로 확인합니다.";
+    hint.textContent = t("detectBrowserPreview");
     hint.className = "field-hint";
     return;
   }
 
-  hint.textContent = "설치된 브라우저를 확인하는 중…";
+  hint.textContent = t("detectingBrowser");
   hint.className = "field-hint";
   try {
     const browser = await invoke("detect_browser", { requested: fieldValue("browserPath") });
     hint.textContent = `${browser.name} · ${browser.path}`;
     hint.className = "field-hint success";
-    if (showResultToast) showToast(`${browser.name}을(를) 사용할 수 있습니다.`);
+    if (showResultToast) showToast(t("browserAvailable", { name: browser.name }));
   } catch (error) {
     hint.textContent = String(error);
     hint.className = "field-hint error";
@@ -279,12 +287,12 @@ async function refreshBrowserDetection(showResultToast = false) {
 async function refreshRhtlcDetection() {
   const hint = $("rhtlcDetection");
   if (!window.__TAURI_INTERNALS__) {
-    hint.textContent = "데스크톱 앱에 RHTLC 연결 기능이 포함되어 있습니다.";
+    hint.textContent = t("rhtlcPreview");
     return;
   }
   try {
     await invoke("detect_rhtlc");
-    hint.textContent = "내장 RHTLC 엔진 준비 완료";
+    hint.textContent = t("rhtlcReady");
     hint.className = "field-hint success";
   } catch (error) {
     hint.textContent = String(error);
@@ -293,6 +301,7 @@ async function refreshRhtlcDetection() {
 }
 
 function setConnectionState(state, text) {
+  connectionState = state;
   connecting = state === "connecting";
   connected = state === "connected";
   $("statusIcon").className = `status-icon ${state === "idle" ? "" : state}`;
@@ -310,22 +319,23 @@ function setConnectionState(state, text) {
 function updateTarget() {
   const ip = $("sshIP").value.trim();
   const user = $("sshUser").value.trim() || "student";
-  const sessions = connected && browserSessionCount ? ` · 브라우저 ${browserSessionCount}개` : "";
+  const sessions = connected && browserSessionCount ? t("browserCount", { count: browserSessionCount }) : "";
   $("statusTarget").textContent = $("connectionMode").value === "rhtlc"
-    ? `RHTLC · VPN 없이 접속${sessions}`
-    : ip ? `${user}@${ip}${sessions}` : "SSH IP를 입력하세요";
+    ? t("rhtlcTarget", { sessions })
+    : ip ? `${user}@${ip}${sessions}` : t("enterIP");
 }
 
 function appendLog(text) {
   const output = $("logOutput");
-  if (output.textContent === "아직 실행 기록이 없습니다.") output.textContent = "";
-  const time = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
+  if (!hasLog) output.textContent = "";
+  hasLog = true;
+  const time = new Intl.DateTimeFormat(appLanguage, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
   output.textContent += `[${time}] ${text}\n`;
   if (output.textContent.length > 80000) output.textContent = output.textContent.slice(-60000);
   output.scrollTop = output.scrollHeight;
 }
 
-function clearLog() { $("logOutput").textContent = "아직 실행 기록이 없습니다."; }
+function clearLog() { hasLog = false; $("logOutput").textContent = t("noLogs"); }
 
 function showProfileMessage(message) {
   $("profileMessage").textContent = message;
@@ -342,7 +352,49 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => toast.classList.add("hidden"), 6000);
 }
 
+function renderLanguage() {
+  document.documentElement.lang = appLanguage;
+  $("appLanguage").value = appLanguage;
+  applyTranslations(document, appLanguage);
+  refreshProfileSelect();
+  if (!hasLog) clearLog();
+  $("profileMessage").textContent = "";
+  $("toast").classList.add("hidden");
+  const status = disconnectRequested && (connected || connecting)
+    ? t("disconnecting")
+    : connected ? t("connected", { port: activeSocksPort })
+    : connecting ? t("connecting")
+    : connectionState === "error" ? t("connectionFailed") : t("disconnected");
+  $("statusText").textContent = status;
+  validate();
+}
+
+async function changeAppLanguage() {
+  const select = $("appLanguage");
+  const next = normalizeLanguage(select.value);
+  select.disabled = true;
+  try {
+    if (window.__TAURI_INTERNALS__) await invoke("set_app_language", { language: next });
+    appLanguage = next;
+    localStorage.setItem(APP_LANGUAGE_KEY, next);
+    renderLanguage();
+    await refreshBrowserDetection();
+    if (fieldValue("connectionMode") === "rhtlc") await refreshRhtlcDetection();
+  } catch (error) {
+    select.value = appLanguage;
+    showToast(String(error));
+  } finally {
+    select.disabled = false;
+  }
+}
+
 async function initialize() {
+  if (window.__TAURI_INTERNALS__) await invoke("set_app_language", { language: appLanguage });
+  document.documentElement.lang = appLanguage;
+  $("appLanguage").value = appLanguage;
+  applyTranslations(document, appLanguage);
+  clearLog();
+  $("statusText").textContent = t("disconnected");
   const platform = navigator.userAgent.includes("Windows") ? "Windows" : navigator.userAgent.includes("Mac") ? "macOS" : "Desktop";
   $("platformBadge").textContent = `${platform} · v${appVersion.replace(/\.0$/, "")}`;
   refreshProfileSelect();
@@ -363,9 +415,9 @@ async function initialize() {
   });
   await listen("tunnel-status", (event) => {
     const { state, message } = event.payload;
-    if (state === "stopped") setConnectionState("idle", "연결 안 됨");
+    if (state === "stopped") setConnectionState("idle", t("disconnected"));
     else if (state === "error") {
-      setConnectionState("error", "연결 실패");
+      setConnectionState("error", t("connectionFailed"));
       showToast(message);
       $("logPanel").open = true;
     } else if (state === "connecting") setConnectionState("connecting", message);
@@ -396,8 +448,9 @@ $("confirmDialog").addEventListener("close", () => {
   localStorage.removeItem(LAST_PROFILE_KEY);
   resetForm();
   void refreshBrowserDetection();
-  showProfileMessage("프로필을 삭제했습니다.");
+  showProfileMessage(t("profileDeleted"));
 });
+$("appLanguage").addEventListener("change", changeAppLanguage);
 $("connectButton").addEventListener("click", connect);
 $("openSessionButton").addEventListener("click", openIsolatedSession);
 $("disconnectButton").addEventListener("click", disconnect);
@@ -409,8 +462,8 @@ $("connectionMode").addEventListener("change", () => {
 $("clearLogButton").addEventListener("click", clearLog);
 for (const id of [...fieldIds, ...ephemeralIds]) $(id).addEventListener("input", validate);
 $("browserPath").addEventListener("input", () => {
-  $("browserDetection").textContent = "‘경로 확인’을 눌러 사용할 수 있는지 확인하세요.";
+  $("browserDetection").textContent = t("checkPathHint");
   $("browserDetection").className = "field-hint";
 });
 
-initialize().catch((error) => showToast(`앱 초기화 오류: ${error}`));
+initialize().catch((error) => showToast(t("initializationError", { message: error })));

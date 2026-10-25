@@ -5,7 +5,12 @@ use std::process::Stdio;
 /// Match RHTLC 6.0.2: use the lab's WebSocket endpoint and discard the portal
 /// query (including its token) before launching the transport. Never log input.
 fn endpoint(value: &str) -> Result<Url> {
-    let invalid = || anyhow!("Copy RHTLC URL로 복사한 rhtlc:// 주소 전체를 붙여넣어 주세요.");
+    let invalid = || {
+        anyhow!(tr!(
+            "Paste the complete rhtlc:// address from Copy RHTLC URL.",
+            "Copy RHTLC URL로 복사한 rhtlc:// 주소 전체를 붙여넣어 주세요."
+        ))
+    };
     let address = value.strip_prefix("rhtlc://").ok_or_else(invalid)?;
     let address = address
         .strip_prefix("https://")
@@ -50,10 +55,16 @@ pub(crate) fn find_engine() -> Result<PathBuf> {
     };
     let path = env::current_exe()?
         .parent()
-        .context("앱 위치를 확인하지 못했습니다.")?
+        .context(tr!(
+            "Could not locate the application.",
+            "앱 위치를 확인하지 못했습니다."
+        ))?
         .join(name);
     if !path.is_file() {
-        bail!("앱에 포함된 RHTLC 엔진을 찾을 수 없습니다. Remote OCP를 다시 설치해 주세요.");
+        tr_bail!(
+            "The bundled RHTLC engine is missing. Reinstall Remote OCP.",
+            "앱에 포함된 RHTLC 엔진을 찾을 수 없습니다. Remote OCP를 다시 설치해 주세요."
+        );
     }
     Ok(path)
 }
@@ -105,17 +116,22 @@ impl Connection {
 
     pub(crate) async fn connect(&mut self, url: &str) -> Result<()> {
         if self.child.is_some() {
-            bail!("RHTLC 연결이 이미 실행 중입니다.");
+            tr_bail!(
+                "An RHTLC connection is already running.",
+                "RHTLC 연결이 이미 실행 중입니다."
+            );
         }
-        self.child = Some(
-            self.launch_command(url)?
-                .spawn()
-                .context("내장 RHTLC 엔진을 시작하지 못했습니다.")?,
-        );
+        self.child = Some(self.launch_command(url)?.spawn().context(tr!(
+            "Could not start the built-in RHTLC engine.",
+            "내장 RHTLC 엔진을 시작하지 못했습니다."
+        ))?);
         timeout(Duration::from_secs(10), async {
             loop {
                 if self.child.as_mut().unwrap().try_wait()?.is_some() {
-                    bail!("내장 RHTLC 엔진이 종료되었습니다. 프록시 포트를 확인해 주세요.");
+                    tr_bail!(
+                        "The built-in RHTLC engine exited. Check the proxy port.",
+                        "내장 RHTLC 엔진이 종료되었습니다. 프록시 포트를 확인해 주세요."
+                    );
                 }
                 if TcpStream::connect((Ipv4Addr::LOCALHOST, self.port))
                     .await
@@ -127,13 +143,19 @@ impl Connection {
             }
         })
         .await
-        .context("내장 RHTLC 엔진 시작 시간이 초과되었습니다.")?
+        .context(tr!(
+            "The built-in RHTLC engine timed out while starting.",
+            "내장 RHTLC 엔진 시작 시간이 초과되었습니다."
+        ))?
     }
 
     pub(crate) async fn wait(&mut self) -> Result<()> {
         self.child
             .as_mut()
-            .context("RHTLC 엔진이 실행 중이 아닙니다.")?
+            .context(tr!(
+                "The RHTLC engine is not running.",
+                "RHTLC 엔진이 실행 중이 아닙니다."
+            ))?
             .wait()
             .await?;
         Ok(())
@@ -142,10 +164,10 @@ impl Connection {
     pub(crate) async fn disconnect(&mut self) -> Result<()> {
         if let Some(mut child) = self.child.take() {
             if child.try_wait()?.is_none() {
-                child
-                    .kill()
-                    .await
-                    .context("내장 RHTLC 엔진을 종료하지 못했습니다.")?;
+                child.kill().await.context(tr!(
+                    "Could not stop the built-in RHTLC engine.",
+                    "내장 RHTLC 엔진을 종료하지 못했습니다."
+                ))?;
             }
         }
         Ok(())
@@ -156,29 +178,36 @@ impl Connection {
 /// DNS resolution remains at the lab, never on the user's VPN/local resolver.
 pub(crate) async fn probe(port: u16, dashboard: &str) -> Result<()> {
     let url = Url::parse(dashboard)?;
-    let host = url.host_str().context("대시보드 호스트가 없습니다.")?;
-    let target_port = url
-        .port_or_known_default()
-        .context("대시보드 포트를 확인해 주세요.")?;
+    let host = url.host_str().context(tr!(
+        "The dashboard hostname is missing.",
+        "대시보드 호스트가 없습니다."
+    ))?;
+    let target_port = url.port_or_known_default().context(tr!(
+        "Check the dashboard port.",
+        "대시보드 포트를 확인해 주세요."
+    ))?;
     if host.len() > 255 {
-        bail!("대시보드 호스트 이름이 너무 깁니다.");
+        tr_bail!(
+            "The dashboard hostname is too long.",
+            "대시보드 호스트 이름이 너무 깁니다."
+        );
     }
     timeout(Duration::from_secs(15), async {
         let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await?;
         stream.write_all(&[5, 1, 0]).await?;
         let mut response = [0; 2];
         stream.read_exact(&mut response).await?;
-        if response != [5, 0] { bail!("SOCKS5 인증 응답이 올바르지 않습니다."); }
+        if response != [5, 0] { tr_bail!("Invalid SOCKS5 authentication response.", "SOCKS5 인증 응답이 올바르지 않습니다."); }
         let mut request = vec![5, 1, 0, 3, host.len() as u8];
         request.extend_from_slice(host.as_bytes());
         request.extend_from_slice(&target_port.to_be_bytes());
         stream.write_all(&request).await?;
         let mut response = [0; 4];
         stream.read_exact(&mut response).await?;
-        if response[0] != 5 || response[1] != 0 { bail!("대시보드에 연결할 수 없습니다."); }
+        if response[0] != 5 || response[1] != 0 { tr_bail!("Cannot connect to the dashboard.", "대시보드에 연결할 수 없습니다."); }
         Ok::<(), anyhow::Error>(())
-    }).await.context("실습 대시보드 응답 시간이 초과되었습니다.")?
-      .context("RHTLC 프록시를 통해 대시보드에 접속하지 못했습니다. 새 RHTLC 주소와 대시보드 URL을 확인해 주세요.")
+    }).await.context(tr!("The training dashboard timed out.", "실습 대시보드 응답 시간이 초과되었습니다."))?
+      .context(tr!("Cannot reach the dashboard through RHTLC. Check a fresh RHTLC URL and the dashboard URL.", "RHTLC 프록시를 통해 대시보드에 접속하지 못했습니다. 새 RHTLC 주소와 대시보드 URL을 확인해 주세요."))
 }
 
 #[cfg(test)]

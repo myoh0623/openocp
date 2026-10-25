@@ -1,3 +1,5 @@
+#[macro_use]
+mod language;
 mod rhtlc;
 
 use std::{
@@ -8,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 use russh::{
     ChannelMsg, Disconnect, client,
@@ -141,10 +143,13 @@ async fn start_connection(
     state: State<'_, AppState>,
     config: ConnectionConfig,
 ) -> std::result::Result<ConnectionStarted, String> {
-    let _guard = state
-        .start_lock
-        .try_lock()
-        .map_err(|_| "연결을 준비하거나 종료하는 중입니다.".to_string())?;
+    let _guard = state.start_lock.try_lock().map_err(|_| {
+        tr!(
+            "A connection is starting or stopping.",
+            "연결을 준비하거나 종료하는 중입니다."
+        )
+        .to_string()
+    })?;
     let (stop, cancel) = watch::channel(false);
     *state.pending_stop.lock().await = Some(stop);
     let result = start_connection_inner(app, &state, config, cancel).await;
@@ -163,7 +168,11 @@ async fn start_connection_inner(
     {
         let runtime = state.runtime.lock().await;
         if runtime.is_some() {
-            return Err("이미 연결이 실행 중입니다.".into());
+            return Err(tr!(
+                "A connection is already running.",
+                "이미 연결이 실행 중입니다."
+            )
+            .into());
         }
     }
 
@@ -173,44 +182,68 @@ async fn start_connection_inner(
             .map_err(display_error);
     }
 
-    emit_status(&app, "connecting", "SSH 인증을 확인하는 중…");
+    emit_status(
+        &app,
+        "connecting",
+        tr!("Authenticating SSH…", "SSH 인증을 확인하는 중…"),
+    );
     emit_log(
         &app,
-        format!(
+        tr_format!(
+            "Connecting to SSH server: {}@{}:{}",
             "SSH 서버에 연결합니다: {}@{}:{}",
-            config.ssh_user, config.ssh_ip, config.ssh_port
+            config.ssh_user,
+            config.ssh_ip,
+            config.ssh_port
         ),
     );
 
     let ssh = tokio::select! {
         result = connect_ssh(&app, &config) => result.map_err(display_error)?,
-        _ = cancel.changed() => return Err("연결을 취소했습니다.".into()),
+        _ = cancel.changed() => return Err(tr!("Connection cancelled.", "연결을 취소했습니다.").into()),
     };
     config.password.clear();
     config.private_key_passphrase.clear();
-    emit_log(&app, "SSH 인증이 완료되었습니다.");
+    emit_log(
+        &app,
+        tr!(
+            "SSH authentication completed.",
+            "SSH 인증이 완료되었습니다."
+        ),
+    );
 
-    emit_status(&app, "connecting", "대시보드 주소를 확인하는 중…");
+    emit_status(
+        &app,
+        "connecting",
+        tr!(
+            "Checking the dashboard address…",
+            "대시보드 주소를 확인하는 중…"
+        ),
+    );
     let dashboard_url = tokio::select! {
         result = discover_dashboard(&app, &ssh, &config.dashboard_url) => result.map_err(display_error)?,
-        _ = cancel.changed() => return Err("연결을 취소했습니다.".into()),
+        _ = cancel.changed() => return Err(tr!("Connection cancelled.", "연결을 취소했습니다.").into()),
     };
 
     if *cancel.borrow() {
-        return Err("연결을 취소했습니다.".into());
+        return Err(tr!("Connection cancelled.", "연결을 취소했습니다.").into());
     }
     let (listener, socks_port) = bind_socks_listener(config.first_socks_port)
         .await
         .map_err(display_error)?;
     emit_log(
         &app,
-        format!("SOCKS 프록시가 127.0.0.1:{socks_port}에서 시작되었습니다."),
+        tr_format!(
+            "SOCKS proxy started at 127.0.0.1:{socks_port}.",
+            "SOCKS 프록시가 127.0.0.1:{socks_port}에서 시작되었습니다."
+        ),
     );
 
     let detected_browser = find_browser(&config.browser_path).map_err(display_error)?;
     emit_log(
         &app,
-        format!(
+        tr_format!(
+            "Using browser: {} ({})",
             "브라우저를 사용합니다: {} ({})",
             detected_browser.name,
             detected_browser.path.display()
@@ -237,10 +270,19 @@ async fn start_connection_inner(
 
     emit_log(
         &app,
-        format!("브라우저에서 대시보드를 엽니다: {dashboard_url}"),
+        tr_format!(
+            "Opening dashboard in browser: {dashboard_url}",
+            "브라우저에서 대시보드를 엽니다: {dashboard_url}"
+        ),
     );
     if config.insecure_tls || is_education_domain(&dashboard_url) {
-        emit_log(&app, "이 세션에서는 교육용 인증서 오류를 허용합니다.");
+        emit_log(
+            &app,
+            tr!(
+                "Training certificate errors are allowed for this browser session.",
+                "이 세션에서는 교육용 인증서 오류를 허용합니다."
+            ),
+        );
     }
 
     let keep_profile = config.keep_temporary_profile;
@@ -292,9 +334,9 @@ async fn open_browser_session(
 ) -> std::result::Result<(), String> {
     let (browser_tx, browser_options, keep_profile) = {
         let runtime = state.runtime.lock().await;
-        let running = runtime
-            .as_ref()
-            .ok_or_else(|| "활성 연결이 없습니다.".to_string())?;
+        let running = runtime.as_ref().ok_or_else(|| {
+            tr!("There is no active connection.", "활성 연결이 없습니다.").to_string()
+        })?;
         (
             running.browser_tx.clone(),
             running.browser_options.clone(),
@@ -322,12 +364,20 @@ async fn open_browser_session(
         let mut instance = error.0;
         let _ = instance.child.kill().await;
         cleanup_browser_profile(&app, instance.temporary_profile, instance.keep_profile);
-        return Err("연결이 종료되어 새 브라우저 세션을 열 수 없습니다.".into());
+        return Err(tr!(
+            "The connection has stopped; a new browser session cannot be opened.",
+            "연결이 종료되어 새 브라우저 세션을 열 수 없습니다."
+        )
+        .into());
     }
 
     emit_log(
         &app,
-        format!("독립 브라우저 세션을 엽니다: {}", profile_path.display()),
+        tr_format!(
+            "Opening isolated browser session: {}",
+            "독립 브라우저 세션을 엽니다: {}",
+            profile_path.display()
+        ),
     );
     Ok(())
 }
@@ -358,35 +408,55 @@ fn validate_config(config: &mut ConnectionConfig) -> Result<()> {
     config.private_key_path = config.private_key_path.trim().to_string();
 
     if config.connection_mode == "ssh" {
-        let parsed_ip: IpAddr = config
-            .ssh_ip
-            .parse()
-            .context("올바른 SSH IP 주소를 입력해 주세요.")?;
+        let parsed_ip: IpAddr = config.ssh_ip.parse().context(tr!(
+            "Enter a valid SSH IP address.",
+            "올바른 SSH IP 주소를 입력해 주세요."
+        ))?;
         if !matches!(parsed_ip, IpAddr::V4(_)) {
-            bail!("현재 버전은 IPv4 SSH 주소를 사용합니다.");
+            tr_bail!(
+                "This version supports IPv4 SSH addresses.",
+                "현재 버전은 IPv4 SSH 주소를 사용합니다."
+            );
         }
         let user_pattern = Regex::new(r"^[A-Za-z0-9._-]+$")?;
         if !user_pattern.is_match(&config.ssh_user) {
-            bail!("SSH 사용자 이름이 올바르지 않습니다.");
+            tr_bail!(
+                "The SSH username is invalid.",
+                "SSH 사용자 이름이 올바르지 않습니다."
+            );
         }
         if config.ssh_port == 0 {
-            bail!("SSH 포트는 1~65535 사이여야 합니다.");
+            tr_bail!(
+                "SSH port must be between 1 and 65535.",
+                "SSH 포트는 1~65535 사이여야 합니다."
+            );
         }
     } else if config.connection_mode == "rhtlc" {
         config.rhtlc_url = config.rhtlc_url.trim().to_string();
         rhtlc::validate_url(&config.rhtlc_url)?;
     } else {
-        bail!("지원하지 않는 접속 방식입니다.");
+        tr_bail!(
+            "Unsupported connection method.",
+            "지원하지 않는 접속 방식입니다."
+        );
     }
     if !(1024..=65515).contains(&config.first_socks_port) {
-        bail!("SOCKS 포트는 1024~65515 사이여야 합니다.");
+        tr_bail!(
+            "SOCKS port must be between 1024 and 65515.",
+            "SOCKS 포트는 1024~65515 사이여야 합니다."
+        );
     }
     browser_locale(&config.browser_language)?;
     if !config.dashboard_url.is_empty() {
-        let parsed = Url::parse(&config.dashboard_url)
-            .context("대시보드 URL은 http:// 또는 https://로 시작해야 합니다.")?;
+        let parsed = Url::parse(&config.dashboard_url).context(tr!(
+            "Dashboard URL must start with http:// or https://.",
+            "대시보드 URL은 http:// 또는 https://로 시작해야 합니다."
+        ))?;
         if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
-            bail!("대시보드 URL은 http:// 또는 https://로 시작해야 합니다.");
+            tr_bail!(
+                "Dashboard URL must start with http:// or https://.",
+                "대시보드 URL은 http:// 또는 https://로 시작해야 합니다."
+            );
         }
     }
     Ok(())
@@ -415,8 +485,14 @@ async fn connect_ssh(
         ),
     )
     .await
-    .context("SSH 서버 응답 시간이 초과되었습니다.")?
-    .context("SSH 서버에 연결할 수 없습니다. IP와 포트를 확인해 주세요.")?;
+    .context(tr!(
+        "The SSH server timed out.",
+        "SSH 서버 응답 시간이 초과되었습니다."
+    ))?
+    .context(tr!(
+        "Cannot connect to the SSH server. Check the IP address and port.",
+        "SSH 서버에 연결할 수 없습니다. IP와 포트를 확인해 주세요."
+    ))?;
 
     let key_path = select_private_key(&config.private_key_path);
     if let Some(path) = key_path {
@@ -429,26 +505,60 @@ async fn connect_ssh(
         .await
         {
             Ok(true) => {
-                emit_log(app, format!("SSH 개인 키 인증 사용: {}", path.display()));
+                emit_log(
+                    app,
+                    tr_format!(
+                        "Using SSH private-key authentication: {}",
+                        "SSH 개인 키 인증 사용: {}",
+                        path.display()
+                    ),
+                );
                 return Ok(session);
             }
-            Ok(false) => emit_log(app, "SSH 개인 키가 거부되어 비밀번호 인증을 시도합니다."),
-            Err(error) => emit_log(app, format!("SSH 개인 키를 사용할 수 없습니다: {error}")),
+            Ok(false) => emit_log(
+                app,
+                tr!(
+                    "SSH private key rejected; trying password authentication.",
+                    "SSH 개인 키가 거부되어 비밀번호 인증을 시도합니다."
+                ),
+            ),
+            Err(error) => emit_log(
+                app,
+                tr_format!(
+                    "Cannot use the SSH private key: {error}",
+                    "SSH 개인 키를 사용할 수 없습니다: {error}"
+                ),
+            ),
         }
     }
 
     if config.password.is_empty() {
-        bail!("사용 가능한 SSH 개인 키가 없습니다. SSH 비밀번호를 입력해 주세요.");
+        tr_bail!(
+            "No usable SSH private key was found. Enter an SSH password.",
+            "사용 가능한 SSH 개인 키가 없습니다. SSH 비밀번호를 입력해 주세요."
+        );
     }
 
     let auth = session
         .authenticate_password(&config.ssh_user, &config.password)
         .await
-        .context("SSH 비밀번호 인증을 완료할 수 없습니다.")?;
+        .context(tr!(
+            "Could not complete SSH password authentication.",
+            "SSH 비밀번호 인증을 완료할 수 없습니다."
+        ))?;
     if !auth.success() {
-        bail!("SSH 인증에 실패했습니다. 사용자 이름과 비밀번호를 확인해 주세요.");
+        tr_bail!(
+            "SSH authentication failed. Check your username and password.",
+            "SSH 인증에 실패했습니다. 사용자 이름과 비밀번호를 확인해 주세요."
+        );
     }
-    emit_log(app, "SSH 비밀번호 인증을 사용했습니다.");
+    emit_log(
+        app,
+        tr!(
+            "Used SSH password authentication.",
+            "SSH 비밀번호 인증을 사용했습니다."
+        ),
+    );
     Ok(session)
 }
 
@@ -463,7 +573,10 @@ async fn authenticate_key(
     } else {
         Some(passphrase)
     };
-    let key = load_secret_key(path, secret).context("개인 키 파일을 읽지 못했습니다.")?;
+    let key = load_secret_key(path, secret).context(tr!(
+        "Could not read the private-key file.",
+        "개인 키 파일을 읽지 못했습니다."
+    ))?;
     let hash = session.best_supported_rsa_hash().await?.flatten();
     let auth = session
         .authenticate_publickey(user, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
@@ -496,7 +609,13 @@ async fn discover_dashboard(
         .trim()
         .to_string();
     if valid_web_url(&console_url) {
-        emit_log(app, "OpenShift 콘솔 주소를 자동으로 찾았습니다.");
+        emit_log(
+            app,
+            tr!(
+                "Automatically found the OpenShift console address.",
+                "OpenShift 콘솔 주소를 자동으로 찾았습니다."
+            ),
+        );
         return Ok(console_url);
     }
 
@@ -508,7 +627,13 @@ async fn discover_dashboard(
     .trim()
     .to_string();
     if valid_hostname(&console_host) {
-        emit_log(app, "OpenShift console Route를 자동으로 찾았습니다.");
+        emit_log(
+            app,
+            tr!(
+                "Automatically found the OpenShift console route.",
+                "OpenShift console Route를 자동으로 찾았습니다."
+            ),
+        );
         return Ok(format!("https://{console_host}/"));
     }
 
@@ -520,13 +645,22 @@ async fn discover_dashboard(
     .trim()
     .to_string();
     if valid_hostname(&rhoai_host) {
-        emit_log(app, "RHOAI Dashboard Route를 자동으로 찾았습니다.");
+        emit_log(
+            app,
+            tr!(
+                "Automatically found the RHOAI dashboard route.",
+                "RHOAI Dashboard Route를 자동으로 찾았습니다."
+            ),
+        );
         return Ok(format!("https://{rhoai_host}/"));
     }
 
     emit_log(
         app,
-        "콘솔 주소를 찾지 못해 현재 실습 기본 주소를 사용합니다.",
+        tr!(
+            "Console address not found; using the default training address.",
+            "콘솔 주소를 찾지 못해 현재 실습 기본 주소를 사용합니다."
+        ),
     );
     Ok("https://console-openshift-console.apps.ocp4.example.com/".into())
 }
@@ -550,7 +684,8 @@ async fn bind_socks_listener(first_port: u16) -> Result<(TcpListener, u16)> {
             return Ok((listener, port));
         }
     }
-    bail!(
+    tr_bail!(
+        "No SOCKS port is available in the range {}–{}.",
         "{}~{} 범위에서 사용할 수 있는 SOCKS 포트를 찾지 못했습니다.",
         first_port,
         first_port + 19
@@ -577,7 +712,7 @@ async fn run_proxy_loop(
         tokio::select! {
             changed = stop.changed() => {
                 if changed.is_err() || *stop.borrow() {
-                    emit_log(&app, "사용자 요청으로 연결을 종료합니다.");
+                    emit_log(&app, tr!("Disconnecting at your request.", "사용자 요청으로 연결을 종료합니다."));
                     break;
                 }
             }
@@ -587,7 +722,7 @@ async fn run_proxy_loop(
             }
             finished = browsers.join_next(), if !browsers.is_empty() => {
                 if let Some(Err(error)) = finished {
-                    emit_log(&app, format!("브라우저 감시 작업 오류: {error}"));
+                    emit_log(&app, tr_format!("Browser watcher error: {error}", "브라우저 감시 작업 오류: {error}"));
                 }
                 if browsers.is_empty() {
                     if let Ok(browser) = browser_rx.try_recv() {
@@ -596,7 +731,7 @@ async fn run_proxy_loop(
                         continue;
                     }
                     emit_browser_count(&app, 0);
-                    emit_log(&app, "마지막 브라우저 창이 닫혀 SSH 터널을 종료합니다.");
+                    emit_log(&app, tr!("The last browser process exited; stopping the SSH tunnel.", "마지막 브라우저 창이 닫혀 SSH 터널을 종료합니다."));
                     break;
                 }
                 emit_browser_count(&app, browsers.len());
@@ -608,12 +743,12 @@ async fn run_proxy_loop(
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
                             if let Err(error) = proxy_socks_connection(socket, peer, ssh).await {
-                                emit_log(&app, format!("프록시 연결 오류: {error}"));
+                                emit_log(&app, tr_format!("Proxy connection error: {error}", "프록시 연결 오류: {error}"));
                             }
                         });
                     }
                     Err(error) => {
-                        emit_log(&app, format!("SOCKS 연결 수락 오류: {error}"));
+                        emit_log(&app, tr_format!("SOCKS accept error: {error}", "SOCKS 연결 수락 오류: {error}"));
                         break;
                     }
                 }
@@ -624,7 +759,13 @@ async fn run_proxy_loop(
     let _ = stop_tx.send(true);
     while let Some(result) = browsers.join_next().await {
         if let Err(error) = result {
-            emit_log(&app, format!("브라우저 종료 작업 오류: {error}"));
+            emit_log(
+                &app,
+                tr_format!(
+                    "Browser shutdown error: {error}",
+                    "브라우저 종료 작업 오류: {error}"
+                ),
+            );
         }
     }
     while let Ok(mut pending) = browser_rx.try_recv() {
@@ -638,7 +779,7 @@ async fn run_proxy_loop(
         .await;
 
     app.state::<AppState>().runtime.lock().await.take();
-    emit_status(&app, "stopped", "연결 안 됨");
+    emit_status(&app, "stopped", tr!("Not connected", "연결 안 됨"));
 }
 
 fn spawn_browser_watcher(
@@ -668,8 +809,8 @@ async fn watch_browser(
         }
         status = browser.child.wait() => {
             match status {
-                Ok(_) => emit_log(&app, "브라우저 창이 닫혔습니다."),
-                Err(error) => emit_log(&app, format!("브라우저 상태 확인 오류: {error}")),
+                Ok(_) => emit_log(&app, tr!("Browser process exited.", "브라우저 창이 닫혔습니다.")),
+                Err(error) => emit_log(&app, tr_format!("Browser status error: {error}", "브라우저 상태 확인 오류: {error}")),
             }
         }
     }
@@ -687,12 +828,22 @@ fn cleanup_browser_profile(
     if keep_profile {
         emit_log(
             app,
-            format!("임시 브라우저 프로필을 보관했습니다: {}", path.display()),
+            tr_format!(
+                "Kept temporary browser profile: {}",
+                "임시 브라우저 프로필을 보관했습니다: {}",
+                path.display()
+            ),
         );
     } else if let Err(error) = std::fs::remove_dir_all(&path)
         && path.exists()
     {
-        emit_log(app, format!("임시 프로필 정리 오류: {error}"));
+        emit_log(
+            app,
+            tr_format!(
+                "Temporary profile cleanup error: {error}",
+                "임시 프로필 정리 오류: {error}"
+            ),
+        );
     }
 }
 
@@ -704,7 +855,10 @@ async fn proxy_socks_connection(
     let mut greeting = [0u8; 2];
     socket.read_exact(&mut greeting).await?;
     if greeting[0] != 5 || greeting[1] == 0 {
-        bail!("지원되지 않는 SOCKS 요청입니다.");
+        tr_bail!(
+            "Unsupported SOCKS request.",
+            "지원되지 않는 SOCKS 요청입니다."
+        );
     }
     let mut methods = vec![0u8; greeting[1] as usize];
     socket.read_exact(&mut methods).await?;
@@ -714,7 +868,10 @@ async fn proxy_socks_connection(
     socket.read_exact(&mut request).await?;
     if request[0] != 5 || request[1] != 1 {
         socket.write_all(&[5, 7, 0, 1, 0, 0, 0, 0, 0, 0]).await?;
-        bail!("SOCKS CONNECT 이외의 명령은 지원하지 않습니다.");
+        tr_bail!(
+            "Only SOCKS CONNECT is supported.",
+            "SOCKS CONNECT 이외의 명령은 지원하지 않습니다."
+        );
     }
 
     let host = match request[3] {
@@ -727,14 +884,20 @@ async fn proxy_socks_connection(
             let length = socket.read_u8().await? as usize;
             let mut name = vec![0u8; length];
             socket.read_exact(&mut name).await?;
-            String::from_utf8(name).context("SOCKS 호스트 이름이 UTF-8이 아닙니다.")?
+            String::from_utf8(name).context(tr!(
+                "The SOCKS hostname is not valid UTF-8.",
+                "SOCKS 호스트 이름이 UTF-8이 아닙니다."
+            ))?
         }
         4 => {
             let mut octets = [0u8; 16];
             socket.read_exact(&mut octets).await?;
             std::net::Ipv6Addr::from(octets).to_string()
         }
-        _ => bail!("지원되지 않는 SOCKS 주소 형식입니다."),
+        _ => tr_bail!(
+            "Unsupported SOCKS address type.",
+            "지원되지 않는 SOCKS 주소 형식입니다."
+        ),
     };
     let port = socket.read_u16().await?;
 
@@ -764,7 +927,8 @@ fn find_browser(requested: &str) -> Result<DetectedBrowser> {
                 path,
             });
         }
-        bail!(
+        tr_bail!(
+            "Cannot find the selected browser executable: {}",
             "선택한 브라우저 실행 파일을 찾을 수 없습니다: {}",
             path.display()
         );
@@ -885,9 +1049,10 @@ fn find_browser(requested: &str) -> Result<DetectedBrowser> {
         .into_iter()
         .find(|browser| browser.path.is_file())
         .ok_or_else(|| {
-            anyhow!(
+            anyhow!(tr!(
+                "Chrome, Chromium, or Edge was not found. Enter the browser executable path.",
                 "Chrome, Chromium 또는 Edge를 찾지 못했습니다. 실행 파일 경로를 직접 입력해 주세요."
-            )
+            ))
         })
 }
 
@@ -910,7 +1075,10 @@ fn browser_locale(language: &str) -> Result<(&'static str, &'static str)> {
     match language {
         "en-US" => Ok(("en-US", "en-US,en")),
         "ko-KR" => Ok(("ko-KR", "ko-KR,ko,en-US,en")),
-        _ => bail!("브라우저 언어는 English 또는 한국어 중에서 선택해 주세요."),
+        _ => tr_bail!(
+            "Choose English or Korean as the browser language.",
+            "브라우저 언어는 English 또는 한국어 중에서 선택해 주세요."
+        ),
     }
 }
 
@@ -923,7 +1091,10 @@ fn prepare_browser_profile(requested: &str) -> Result<(PathBuf, bool)> {
     } else {
         (expand_home(requested), false)
     };
-    std::fs::create_dir_all(&path).context("브라우저 프로필 폴더를 만들 수 없습니다.")?;
+    std::fs::create_dir_all(&path).context(tr!(
+        "Cannot create the browser profile folder.",
+        "브라우저 프로필 폴더를 만들 수 없습니다."
+    ))?;
     Ok((path, temporary))
 }
 
@@ -952,9 +1123,13 @@ fn launch_browser(
         command.arg("--ignore-certificate-errors");
     }
     command.arg(dashboard_url);
-    command
-        .spawn()
-        .with_context(|| format!("브라우저를 실행할 수 없습니다: {}", executable.display()))
+    command.spawn().with_context(|| {
+        tr_format!(
+            "Cannot launch the browser: {}",
+            "브라우저를 실행할 수 없습니다: {}",
+            executable.display()
+        )
+    })
 }
 
 fn valid_web_url(value: &str) -> bool {
@@ -1024,10 +1199,14 @@ pub fn run() {
             open_browser_session,
             detect_browser,
             detect_rhtlc,
+            set_app_language,
             stop_connection
         ])
         .build(tauri::generate_context!())
-        .expect("Remote OCP 앱을 시작할 수 없습니다.");
+        .expect(tr!(
+            "Cannot start Remote OCP.",
+            "Remote OCP 앱을 시작할 수 없습니다."
+        ));
 
     app.run(|app_handle, event| {
         if let tauri::RunEvent::ExitRequested {
@@ -1121,22 +1300,39 @@ async fn start_rhtlc_connection(
     let (reservation, port) = bind_socks_listener(config.first_socks_port).await?;
     drop(reservation);
     let mut tunnel = rhtlc::Connection::new(engine, port);
-    emit_status(&app, "connecting", "RHTLC로 실습 환경에 연결하는 중…");
+    emit_status(
+        &app,
+        "connecting",
+        tr!(
+            "Connecting to the training lab through RHTLC…",
+            "RHTLC로 실습 환경에 연결하는 중…"
+        ),
+    );
     emit_log(
         &app,
-        "내장 RHTLC 엔진으로 연결합니다. 별도 클라이언트나 VPN 설치가 필요하지 않습니다.",
+        tr!(
+            "Connecting with the built-in RHTLC engine. No separate client or VPN is needed.",
+            "내장 RHTLC 엔진으로 연결합니다. 별도 클라이언트나 VPN 설치가 필요하지 않습니다."
+        ),
     );
     let preparation = {
         let work = async {
             tunnel.connect(&config.rhtlc_url).await?;
-            emit_status(&app, "connecting", "RHTLC 대시보드 접속을 확인하는 중…");
+            emit_status(
+                &app,
+                "connecting",
+                tr!(
+                    "Verifying dashboard access through RHTLC…",
+                    "RHTLC 대시보드 접속을 확인하는 중…"
+                ),
+            );
             rhtlc::probe(tunnel.port, &dashboard).await
         };
         tokio::pin!(work);
         tokio::select! {
             result = &mut work => result,
             _ = cancel.changed() => {
-                Err(anyhow!("연결을 취소했습니다."))
+                Err(anyhow!(tr!("Connection cancelled.", "연결을 취소했습니다.")))
             },
         }
     };
@@ -1196,7 +1392,10 @@ async fn start_rhtlc_connection(
     }
     emit_log(
         &app,
-        format!("RHTLC 프록시 연결 확인 완료 · 127.0.0.1:{port}"),
+        tr_format!(
+            "RHTLC proxy verified · 127.0.0.1:{port}",
+            "RHTLC 프록시 연결 확인 완료 · 127.0.0.1:{port}"
+        ),
     );
     tauri::async_runtime::spawn(watch_rhtlc(app, tunnel, initial, receiver, stop, stopped));
     Ok(ConnectionStarted {
@@ -1237,7 +1436,7 @@ async fn watch_rhtlc(
             }
             _ = tunnel.wait() => {
                 failed = true;
-                emit_log(&app, "내장 RHTLC 엔진이 종료되었습니다.");
+                emit_log(&app, tr!("The built-in RHTLC engine exited.", "내장 RHTLC 엔진이 종료되었습니다."));
                 break;
             }
         }
@@ -1256,15 +1455,29 @@ async fn watch_rhtlc(
     app.state::<AppState>().runtime.lock().await.take();
     emit_browser_count(&app, 0);
     if !failed {
-        emit_log(&app, "Remote OCP에서 만든 RHTLC 연결을 정리했습니다.");
+        emit_log(
+            &app,
+            tr!(
+                "Stopped the RHTLC connection owned by Remote OCP.",
+                "Remote OCP에서 만든 RHTLC 연결을 정리했습니다."
+            ),
+        );
     }
     emit_status(
         &app,
         if failed { "error" } else { "stopped" },
         if failed {
-            "RHTLC 연결이 끊어졌거나 종료에 실패했습니다. 실행 기록을 확인해 주세요."
+            tr!(
+                "The RHTLC connection was lost or could not stop cleanly. Check the activity log.",
+                "RHTLC 연결이 끊어졌거나 종료에 실패했습니다. 실행 기록을 확인해 주세요."
+            )
         } else {
-            "연결 안 됨"
+            tr!("Not connected", "연결 안 됨")
         },
     );
+}
+
+#[tauri::command]
+fn set_app_language(language: String) -> std::result::Result<(), String> {
+    language::set(&language)
 }

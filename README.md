@@ -1,6 +1,10 @@
-# Remote OCP 2.1
+# Remote OCP 2.2
 
 Remote OCP opens OpenShift and RHOAI dashboards through either an IP/SSH connection or a Red Hat Training Lab Connector (`rhtlc://`) URL. One Rust + Tauri codebase builds the macOS and Windows desktop apps.
+
+## App language
+
+Use **App language** in the sidebar to switch between **English** and **한국어**. English is the default. The choice is remembered for the next launch and applies to the interface, validation, and new connection messages. It is independent of the browser language in each connection profile.
 
 ## Features
 

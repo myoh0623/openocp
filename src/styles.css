@@ -264,7 +264,7 @@ dialog p { margin: 8px 0 19px; color: var(--muted); font-size: 12px; }
 }
 
 .app-shell.busy .sidebar input,
-.app-shell.busy .sidebar select,
+.app-shell.busy .sidebar select:not(#appLanguage),
 .app-shell.busy .sidebar button,
 .app-shell.busy .workspace-scroll input { pointer-events: none; opacity: .58; }
 
@@ -300,3 +300,9 @@ dialog p { margin: 8px 0 19px; color: var(--muted); font-size: 12px; }
 }
 
 .connection-mode { margin-bottom: 16px; }
+
+.app-language { margin: -10px 0 22px; }
+.app-language select { height: 34px; }
+.workspace-header > div:first-child { min-width: 0; }
+.workspace-header { gap: 14px; }
+.header-actions { flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; max-width: 55%; }
