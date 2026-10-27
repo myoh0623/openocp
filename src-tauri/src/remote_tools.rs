@@ -198,15 +198,8 @@ impl Session {
                     powershell_quote(&self.config.to_string_lossy()),
                     powershell_quote(&self.alias)
                 );
-                let powershell = env::var_os("SystemRoot")
-                    .map(PathBuf::from)
-                    .context("SystemRoot is unavailable")?
-                    .join("System32/WindowsPowerShell/v1.0/powershell.exe");
                 launch_detached(
-                    Command::new(powershell)
-                        .args(["-NoLogo", "-NoProfile", "-NoExit", "-Command"])
-                        .arg(text)
-                        .creation_flags(0x00000010),
+                    &mut windows_console_command(&text)?,
                     "PowerShell",
                     launch_error_reporter(app, stop),
                 )
@@ -293,6 +286,35 @@ fn launch_status(status: std::process::ExitStatus, name: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_console_command(script: &str) -> Result<Command> {
+    use base64::Engine;
+
+    let system32 = env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .context("SystemRoot is unavailable")?
+        .join("System32");
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
+    let mut command = Command::new(system32.join("cmd.exe"));
+    // CREATE_NEW_CONSOLE alone does not replace explicitly inherited NUL/pipe
+    // handles. Reopen the new console's buffers before starting PowerShell so
+    // both it and native SSH receive real interactive stdin/stdout/stderr.
+    // Only Base64 and a quoted, app-supplied system executable enter cmd syntax;
+    // paths/user arguments remain inside the encoded PowerShell command.
+    command
+        .args(["/D", "/V:OFF", "/S", "/C"])
+        .raw_arg(format!(
+            "\"\"%REMOTE_OCP_POWERSHELL%\" -NoLogo -NoProfile -NoExit -EncodedCommand {encoded} <CONIN$ >CONOUT$ 2>&1\""
+        ))
+        .env(
+            "REMOTE_OCP_POWERSHELL",
+            system32.join("WindowsPowerShell/v1.0/powershell.exe"),
+        )
+        .creation_flags(0x00000010); // CREATE_NEW_CONSOLE
+    Ok(command)
 }
 
 async fn launch_detached(
@@ -786,6 +808,20 @@ mod tests {
     #[test]
     fn launcher_fixture() {
         match env::var("REMOTE_OCP_TEST_LAUNCH").as_deref() {
+            #[cfg(windows)]
+            Ok("console-probe") => {
+                use std::io::IsTerminal;
+                let handles = [
+                    std::io::stdin().is_terminal(),
+                    std::io::stdout().is_terminal(),
+                    std::io::stderr().is_terminal(),
+                ];
+                std::fs::write(
+                    env::var_os("REMOTE_OCP_TEST_CONSOLE_REPORT").unwrap(),
+                    serde_json::to_vec(&handles).unwrap(),
+                )
+                .unwrap();
+            }
             Ok("fail") => std::process::exit(7),
             Ok("late-fail") => {
                 std::thread::sleep(Duration::from_secs(3));
@@ -800,6 +836,58 @@ mod tests {
         cmd.args(["--exact", "remote_tools::tests::launcher_fixture"])
             .env("REMOTE_OCP_TEST_LAUNCH", case);
         cmd
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn powershell_fallback_restores_native_console_handles() {
+        // Exercise real cmd.exe -> Windows PowerShell -> native-child launches,
+        // including paths that must survive both command interpreters unchanged.
+        let root = env::temp_dir().join(format!(
+            "remote-ocp-console 한글 ' & %PATH% ! ^ (test)-{}",
+            Uuid::new_v4()
+        ));
+        private_directory(&root).unwrap();
+        let fixture = root.join("console probe.exe");
+        std::fs::copy(env::current_exe().unwrap(), &fixture).unwrap();
+        let report = root.join("handles.json");
+        let script = format!(
+            "& {} --exact remote_tools::tests::launcher_fixture --nocapture; exit $LASTEXITCODE",
+            powershell_quote(&fixture.to_string_lossy())
+        );
+        for piped in [false, true] {
+            let mut command = windows_console_command(&script).unwrap();
+            command
+                .env("REMOTE_OCP_TEST_LAUNCH", "console-probe")
+                .env("REMOTE_OCP_TEST_CONSOLE_REPORT", &report)
+                .stdin(Stdio::null())
+                .stdout(if piped { Stdio::piped() } else { Stdio::null() })
+                .stderr(if piped { Stdio::piped() } else { Stdio::null() })
+                .kill_on_drop(true);
+            let mut child = command.spawn().unwrap();
+            let result = timeout(Duration::from_secs(30), child.wait()).await;
+            if result.is_err() {
+                // Only terminate this test's process tree, including the new
+                // console, if a regression leaves PowerShell waiting forever.
+                if let Some(pid) = child.id() {
+                    let _ = Command::new("taskkill.exe")
+                        .args(["/PID", &pid.to_string(), "/T", "/F"])
+                        .output()
+                        .await;
+                }
+            }
+            let status = result.expect("Console fixture timed out").unwrap();
+            assert!(status.success(), "Console fixture failed: {status}");
+            let handles: [bool; 3] =
+                serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+            assert_eq!(
+                handles,
+                [true, true, true],
+                "Native child must receive console stdin/stdout/stderr (piped parent: {piped})"
+            );
+            std::fs::remove_file(&report).unwrap();
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]
