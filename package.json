@@ -2,7 +2,7 @@
   "name": "remote-ocp",
   "private": true,
   "license": "MIT",
-  "version": "2.2.2",
+  "version": "2.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",

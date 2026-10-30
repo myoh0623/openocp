@@ -1,4 +1,4 @@
-# Remote OCP 2.2.2
+# Remote OCP 2.2.1
 
 [English](README.md) | [한국어](README.ko.md)
 

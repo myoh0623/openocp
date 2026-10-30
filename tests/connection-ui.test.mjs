@@ -37,7 +37,7 @@ async function fixture(initialStorage = []) {
       documentElement: {}, querySelector: () => ({ classList: classes() }) },
     localStorage: { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v), removeItem: k => saved.delete(k) },
     window: { __TAURI_INTERNALS__: true, setTimeout() {}, clearTimeout() {} }, navigator: { userAgent: 'Mac' },
-    crypto: { randomUUID }, Option: class {}, URL, Intl, appVersion: '2.2.2', normalizeLanguage, translate, createTutorial, profileIssue,
+    crypto: { randomUUID }, Option: class {}, URL, Intl, appVersion: '2.2.1', normalizeLanguage, translate, createTutorial, profileIssue,
     applyTranslations() {}, listen: async (name, fn) => events.set(name, fn),
     invoke: async (name, args) => {
       calls.push({ name, args });
