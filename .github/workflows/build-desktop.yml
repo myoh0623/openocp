@@ -153,4 +153,3 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
           gh release edit "$RELEASE_TAG" --notes-file "$notes" --draft=false --latest
-
