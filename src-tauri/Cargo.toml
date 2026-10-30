@@ -1,6 +1,6 @@
 [package]
 name = "remote-ocp"
-version = "2.2.1"
+version = "2.2.2"
 description = "OpenShift dashboard access through an SSH SOCKS tunnel"
 authors = ["omy"]
 edition = "2024"
