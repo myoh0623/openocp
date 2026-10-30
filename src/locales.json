@@ -450,5 +450,141 @@
   "toolsCheckNeeded": {
     "en": "Select Check again after changing the path.",
     "ko": "경로 변경 후 다시 확인을 누르세요."
+  },
+  "tutorialOpen": {
+    "en": "Setup tutorial",
+    "ko": "시작 튜토리얼"
+  },
+  "tutorialTitle": {
+    "en": "Set up your lab",
+    "ko": "실습 환경 시작하기"
+  },
+  "tutorialIntro": {
+    "en": "Enter the values you have. Skip anything you need to find later.",
+    "ko": "알고 있는 값은 입력하고, 아직 모르는 값은 건너뛰세요."
+  },
+  "tutorialSteps": {
+    "en": "Setup steps",
+    "ko": "설정 단계"
+  },
+  "tutorialConnection": {
+    "en": "Connection",
+    "ko": "연결 주소"
+  },
+  "tutorialWorkstation": {
+    "en": "Workstation",
+    "ko": "Workstation"
+  },
+  "tutorialDashboard": {
+    "en": "Dashboard",
+    "ko": "대시보드"
+  },
+  "tutorialReview": {
+    "en": "Review & save",
+    "ko": "확인 · 저장"
+  },
+  "tutorialCounter": {
+    "en": "STEP {step} OF 4",
+    "ko": "4단계 중 {step}단계"
+  },
+  "tutorialConnectionHelp": {
+    "en": "In rol.redhat.com, open your class → Labs → your own lab → Red Hat Training Lab Connector (RHTLC). Expand that section and select Copy RHTLC URL. For self-paced courses, look in Lab Environment.",
+    "ko": "rol.redhat.com에서 강의 → Labs(랩) → 내 랩 → Red Hat Training Lab Connector (RHTLC)를 펼친 뒤 Copy RHTLC URL을 누르세요. 온라인 자율 학습 과정은 Lab Environment(랩 환경)에서 확인하세요."
+  },
+  "tutorialOpenRol": {
+    "en": "Open rol.redhat.com ↗",
+    "ko": "rol.redhat.com 열기 ↗"
+  },
+  "tutorialCopyHelp": {
+    "en": "Paste the entire copied address here. Use Copy RHTLC URL, not Launch RHTLC or the ROL page address. If unavailable, skip and return once your lab is ready. Skip leaves the connection address blank.",
+    "ko": "복사한 주소 전체를 붙여넣으세요. Launch RHTLC나 ROL 페이지 주소가 아닌 Copy RHTLC URL을 사용합니다. 버튼이 없으면 건너뛰고 랩이 준비된 뒤 입력하세요. 건너뛰면 연결 주소를 비웁니다."
+  },
+  "tutorialIpHelp": {
+    "en": "Use an SSH IP address reachable from this computer. ROL's SSH private key & instructions may describe a jump host; its public IP is not the workstation. If a jump host is required, use RHTLC for this guided setup. Skip leaves the IP address blank.",
+    "ko": "이 컴퓨터에서 SSH로 접속할 수 있는 IP를 입력하세요. ROL의 SSH private key & instructions에 나온 공인 IP는 중계 서버일 수 있으며 workstation 주소와 다릅니다. 중계 서버가 필요한 실습은 이 설정에서 RHTLC를 사용하세요. 건너뛰면 IP 주소를 비웁니다."
+  },
+  "tutorialPasswordLater": {
+    "en": "Enter your password or private key in Connection settings after completing this tutorial.",
+    "ko": "비밀번호 또는 개인 키는 튜토리얼을 마친 뒤 연결 설정에서 입력하세요."
+  },
+  "tutorialWorkstationHelp": {
+    "en": "Open your course book: Introduction → Orientation to the Classroom Environment → Classroom Environment. Find workstation in the machine table and copy its full hostname (for example, workstation.lab.example.com). Class dashboards link to the book under Resources → Access Bookshelf. You can also run hostname -f in workstation's Open Console. Section titles may vary by course.",
+    "ko": "교재의 소개 → 강의실 환경에 대한 오리엔테이션 → 강의실 환경에서 머신 표의 workstation 호스트 이름(예: workstation.lab.example.com)을 확인하세요. 강의 대시보드의 Resources → Access Bookshelf에서 교재를 열 수 있습니다. workstation의 Open Console에서 hostname -f로도 확인할 수 있습니다. 과정에 따라 절 제목은 다를 수 있습니다."
+  },
+  "tutorialHostHelp": {
+    "en": "The default host is workstation.lab.example.com with user student and port 22. Edit these if your course differs. Select Skip to clear the SSH host and use dashboards only. Your folder setting is kept.",
+    "ko": "기본값은 workstation.lab.example.com, 사용자 student, 포트 22입니다. 과정이 다르면 수정하세요. 건너뛰기를 누르면 SSH 호스트를 비워 대시보드만 이용합니다. 폴더 설정은 유지합니다."
+  },
+  "tutorialFolderHelp": {
+    "en": "/home/student is the default for new profiles. Change it for another account or folder, or clear it to connect without opening a folder.",
+    "ko": "새 프로필의 기본값은 /home/student입니다. 다른 계정·폴더를 사용하면 수정하고, 폴더 없이 연결하려면 비워 두세요."
+  },
+  "tutorialSameSshTarget": {
+    "en": "Terminal and VS Code use the IP, user, and port from step 1.",
+    "ko": "터미널과 VS Code는 1단계의 IP·사용자·포트로 접속합니다."
+  },
+  "tutorialDashboardHelp": {
+    "en": "In the course book, look under Introduction → Orientation to the Classroom Environment → Accessing the OpenShift Web Console. Copy that HTTPS URL. For OpenShift AI, use the URL in the AI exercise instructions, or copy it from the browser inside workstation's Open Console. Use the lab dashboard URL, not the ROL course URL.",
+    "ko": "교재의 소개 → 강의실 환경에 대한 오리엔테이션 → OpenShift 웹 콘솔 액세스에서 HTTPS 주소를 확인하세요. OpenShift AI는 해당 실습 절차의 URL을 사용하거나 workstation의 Open Console 안에서 브라우저로 열어 복사하세요. ROL 강의 페이지 주소와는 다릅니다."
+  },
+  "tutorialDashboardDefaultRhtlc": {
+    "en": "If blank, RHTLC uses https://console-openshift-console.apps.ocp4.example.com/. This works only for labs with that console. Enter the exact URL for OpenShift AI or a different cluster.",
+    "ko": "비워 두면 RHTLC는 https://console-openshift-console.apps.ocp4.example.com/을 사용합니다. 해당 콘솔이 있는 실습에서만 동작합니다. OpenShift AI나 다른 클러스터는 정확한 URL을 입력하세요."
+  },
+  "tutorialDashboardFinding": {
+    "en": "If OpenShift AI is installed, open it from the OpenShift console's application launcher and copy its URL. Dashboard availability and addresses depend on the course. Skip clears this URL and uses the default above.",
+    "ko": "OpenShift AI가 설치되어 있으면 OpenShift 콘솔의 애플리케이션 실행기에서 열어 URL을 복사할 수 있습니다. 대시보드 제공 여부와 주소는 과정마다 다릅니다. 건너뛰면 URL을 비우고 위의 기본 동작을 사용합니다."
+  },
+  "tutorialAutoName": {
+    "en": "An automatic profile name will be used.",
+    "ko": "프로필 이름을 자동으로 지정합니다."
+  },
+  "tutorialRhtlcEntered": {
+    "en": "RHTLC URL entered · token hidden",
+    "ko": "RHTLC 주소 입력됨 · 토큰 숨김"
+  },
+  "tutorialAddressMissing": {
+    "en": "Address skipped · add it before connecting",
+    "ko": "주소를 건너뜀 · 연결 전에 입력 필요"
+  },
+  "tutorialHostSkipped": {
+    "en": "Skipped · dashboard access only",
+    "ko": "건너뜀 · 대시보드만 사용"
+  },
+  "tutorialNoFolder": {
+    "en": "Connect without opening a folder",
+    "ko": "폴더를 열지 않고 연결"
+  },
+  "tutorialIncomplete": {
+    "en": "Save the information you have now. Add the missing connection address on the main screen before connecting.",
+    "ko": "지금 입력한 정보부터 저장하세요. 빠진 연결 주소는 메인 화면에서 입력한 뒤 연결할 수 있습니다."
+  },
+  "tutorialReady": {
+    "en": "Review your settings before saving. Saving does not connect to the lab.",
+    "ko": "설정을 확인한 뒤 저장하세요. 저장만으로 실습에 연결되지는 않습니다."
+  },
+  "tutorialAfterSave": {
+    "en": "After saving, select Connect, then Dashboard, Terminal, or VS Code. Windows terminal access needs OpenSSH Client; VS Code needs Remote - SSH. Check Tool installation status on the main screen.",
+    "ko": "저장 후 연결을 누르고 대시보드·터미널·VS Code를 선택하세요. Windows 터미널은 OpenSSH Client, VS Code는 Remote - SSH 확장이 필요합니다. 메인 화면의 도구 설치 상태에서 확인할 수 있습니다."
+  },
+  "tutorialSave": {
+    "en": "Save profile",
+    "ko": "프로필 저장"
+  },
+  "tutorialNext": {
+    "en": "Next",
+    "ko": "다음"
+  },
+  "tutorialBack": {
+    "en": "Back",
+    "ko": "이전"
+  },
+  "tutorialSkip": {
+    "en": "Skip",
+    "ko": "건너뛰기"
+  },
+  "tutorialLater": {
+    "en": "Close without saving",
+    "ko": "저장하지 않고 닫기"
   }
 }

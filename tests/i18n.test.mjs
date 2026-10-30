@@ -19,7 +19,7 @@ test('both languages cover every screen label and use matching placeholders', ()
     assert.deepEqual(placeholders(entry.en), placeholders(entry.ko), key);
   }
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const main = ['main.js', 'tutorial.js'].map(file => readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')).join('\n');
   const keys = [...html.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/g), ...main.matchAll(/\bt\("([^"]+)"/g)];
   for (const [, key] of keys) assert.ok(messages[key], `Missing UI translation: ${key}`);
 });
