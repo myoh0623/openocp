@@ -135,7 +135,6 @@ jobs:
           PY
 
       - name: Publish GitHub Release
-        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -145,15 +144,8 @@ jobs:
           test -s "$notes"
           if release_state=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft'); then
             if [ "$release_state" != "true" ]; then
-              # One-time, owner-requested consolidation into 2.2.1. Exact asset
-              # IDs prevent this exception from replacing a subsequent build.
-              if [ "$RELEASE_TAG" = "v2.2.1" ] && gh api "repos/$GH_REPO/releases/428836981" \
-                --jq '.tag_name == "v2.2.1" and ([.assets[].id] | sort) == [691575332,691575333,691575338,691575341]' | grep -qx true; then
-                gh release edit "$RELEASE_TAG" --draft=true
-              else
-                echo "Release $RELEASE_TAG is already published; leaving its assets unchanged."
-                exit 0
-              fi
+              echo "Release $RELEASE_TAG is already published; leaving its assets unchanged."
+              exit 0
             fi
           else
             gh release create "$RELEASE_TAG" --verify-tag --draft \
@@ -161,16 +153,4 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
           gh release edit "$RELEASE_TAG" --notes-file "$notes" --draft=false --latest
-          echo "published=true" >> "$GITHUB_OUTPUT"
 
-      - name: Withdraw the superseded interim release
-        if: github.ref_name == 'v2.2.1' && steps.publish.outputs.published == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          # Keep the old installers recoverable as a draft until the new 2.2.1
-          # installers have been published successfully.
-          gh api "repos/$GH_REPO/releases/428852204" \
-            --jq '.tag_name == "v2.2.2" and ([.assets[].id] | sort) == [691615510,691615511,691615512,691615513]' | grep -qx true
-          gh release edit v2.2.2 --draft=true
