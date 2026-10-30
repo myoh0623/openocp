@@ -3,7 +3,10 @@ import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
 import { applyTranslations, normalizeLanguage, translate } from "./i18n.js";
 import { version as appVersion } from "../package.json";
+import { profileIssue } from "./profile-validation.js";
+import { createTutorial } from "./tutorial.js";
 
+const TUTORIAL_KEY = "remoteOcp.tutorial.v1";
 const APP_LANGUAGE_KEY = "remoteOcp.appLanguage";
 let appLanguage = normalizeLanguage(localStorage.getItem(APP_LANGUAGE_KEY));
 const t = (key, values) => translate(appLanguage, key, values);
@@ -29,6 +32,27 @@ let hasLog = false;
 const openingTools = new Set();
 let connectionAttempt = 0;
 let toolsCheck = 0;
+const tutorial = createTutorial({
+  document, t,
+  onSave(profile) {
+    if (connecting || connected) return false;
+    for (const field of fieldIds) setField(field, profile[field]);
+    const saved = saveProfile();
+    if (saved) {
+      void refreshBrowserDetection();
+      void refreshToolsDetection();
+      if (fieldValue("connectionMode") === "rhtlc") void refreshRhtlcDetection();
+    }
+    return saved;
+  },
+  onDismiss() { localStorage.setItem(TUTORIAL_KEY, "done"); }
+});
+
+function openTutorial(firstRun = false) {
+  if (connecting || connected) return;
+  const profile = Object.fromEntries(fieldIds.map((field) => [field, fieldValue(field)]));
+  tutorial.open(profile, firstRun);
+}
 
 function loadProfiles() {
   try {
@@ -75,7 +99,7 @@ function applyProfile(profile) {
   selectedProfileId = profile.id;
   setField("profileName", profile.name);
   for (const field of fieldIds.filter((name) => name !== "profileName")) {
-    const defaults = { browserLanguage: "en-US", connectionMode: "ssh", remoteUser: "student", remotePort: "22" };
+    const defaults = { browserLanguage: "en-US", connectionMode: "ssh", remoteUser: "student", remotePort: "22", remoteFolder: "/home/student" };
     const value = profile[field] ?? defaults[field];
     setField(field, value);
   }
@@ -92,8 +116,10 @@ function resetForm() {
   setField("connectionMode", "ssh");
   setField("sshUser", "student");
   setField("sshPort", "22");
+  setField("remoteHost", "workstation.lab.example.com");
   setField("remoteUser", "student");
   setField("remotePort", "22");
+  setField("remoteFolder", "/home/student");
   setField("socksPort", "1080");
   setField("browserLanguage", "en-US");
   for (const id of ephemeralIds) setField(id, "");
@@ -140,68 +166,24 @@ function validate(forSave = false) {
   $("dashboardHint").textContent = rhtlc
     ? t("dashboardHintRhtlc")
     : t("dashboardHintSSH");
-  const ip = $("sshIP").value.trim();
-  const user = $("sshUser").value.trim();
-  const sshPort = Number($("sshPort").value);
-  const socksPort = Number($("socksPort").value);
-  const url = $("dashboardURL").value.trim();
-  const browserLanguage = $("browserLanguage").value;
-  let issue = "";
-  const octets = ip.split(".");
-  if (!rhtlc && (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255))) {
-    issue = t("invalidIP");
-  } else if (!rhtlc && !/^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/.test(user)) {
-    issue = t("invalidUser");
-  } else if (!rhtlc && (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535)) {
-    issue = t("invalidSSHPort");
-  } else if (!Number.isInteger(socksPort) || socksPort < 1024 || socksPort > 65515) {
-    issue = t("invalidSocksPort");
-  } else if (!["en-US", "ko-KR"].includes(browserLanguage)) {
-    issue = t("chooseBrowserLanguage");
-  } else if (url) {
-    try {
-      const parsed = new URL(url);
-      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
-    } catch {
-      issue = t("invalidDashboard");
-    }
-  }
-  if (!issue && rhtlc && fieldValue("remoteHost")) {
-    const host = fieldValue("remoteHost");
-    let validHost = /^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/.test(host);
-    if (host.includes(":")) {
-      try { validHost = new URL(`http://[${host}]/`).hostname.startsWith("["); }
-      catch { validHost = false; }
-    }
-    if (!validHost) issue = t("invalidRemoteHost");
-    else if (!/^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/.test(fieldValue("remoteUser"))) issue = t("invalidUser");
-    else if (!Number.isInteger(Number(fieldValue("remotePort"))) || Number(fieldValue("remotePort")) < 1 || Number(fieldValue("remotePort")) > 65535) issue = t("invalidSSHPort");
-  }
-  const folder = fieldValue("remoteFolder");
-  if (!issue && folder && (!folder.startsWith("/") || /[\x00-\x1f\x7f]/.test(folder))) issue = t("invalidRemoteFolder");
-  const profileIssue = issue;
-  if (!issue && rhtlc && !connected && !connecting) {
-    try {
-      const input = fieldValue("rhtlcURL");
-      if (!input.startsWith("rhtlc://") || /[\x00-\x1f\x7f]/.test(input)) throw new Error();
-      const parsed = new URL(input.replace(/^rhtlc:\/\/(?:https:\/\/|wss:\/\/)?/, "wss://"));
-      if (parsed.protocol !== "wss:" || !parsed.hostname || !parsed.searchParams.get("token") || parsed.username || parsed.password || parsed.hash) throw new Error();
-    } catch {
-      issue = t("invalidRhtlc");
-    }
-  }
+  const profile = Object.fromEntries(fieldIds.map((field) => [field, fieldValue(field)]));
+  const draftIssue = profileIssue(profile, false);
+  const connectionIssue = profileIssue(profile);
+  const issue = connectionIssue ? t(connectionIssue) : "";
+  const saveIssue = draftIssue ? t(draftIssue) : "";
   $("validationMessage").textContent = issue;
   const locked = connecting || connected;
   for (const id of [...fieldIds, ...ephemeralIds, "profileSelect", "newProfileButton"]) {
     $(id).disabled = locked;
   }
   $("detectBrowserButton").disabled = locked;
+  $("tutorialButton").disabled = locked;
   $("connectButton").disabled = Boolean(issue) || locked;
-  $("saveProfileButton").disabled = Boolean(profileIssue) || locked;
+  $("saveProfileButton").disabled = Boolean(saveIssue) || locked;
   $("deleteProfileButton").disabled = locked || !selectedProfileId;
   updateToolButtons();
   updateTarget();
-  return forSave ? profileIssue : issue;
+  return forSave ? saveIssue : issue;
 }
 
 function buildConnectionConfig() {
@@ -432,7 +414,9 @@ function showToast(message) {
 function renderLanguage() {
   document.documentElement.lang = appLanguage;
   $("appLanguage").value = appLanguage;
+  $("tutorialLanguage").value = appLanguage;
   applyTranslations(document, appLanguage);
+  tutorial.render();
   refreshProfileSelect();
   if (!hasLog) clearLog();
   $("profileMessage").textContent = "";
@@ -450,6 +434,7 @@ async function changeAppLanguage() {
   const select = $("appLanguage");
   const next = normalizeLanguage(select.value);
   select.disabled = true;
+  $("tutorialLanguage").disabled = true;
   try {
     if (window.__TAURI_INTERNALS__) await invoke("set_app_language", { language: next });
     appLanguage = next;
@@ -460,9 +445,11 @@ async function changeAppLanguage() {
     if (fieldValue("connectionMode") === "rhtlc") await refreshRhtlcDetection();
   } catch (error) {
     select.value = appLanguage;
+    $("tutorialLanguage").value = appLanguage;
     showError(String(error));
   } finally {
     select.disabled = false;
+    $("tutorialLanguage").disabled = false;
   }
 }
 
@@ -470,6 +457,7 @@ async function initialize() {
   if (window.__TAURI_INTERNALS__) await invoke("set_app_language", { language: appLanguage });
   document.documentElement.lang = appLanguage;
   $("appLanguage").value = appLanguage;
+  $("tutorialLanguage").value = appLanguage;
   applyTranslations(document, appLanguage);
   clearLog();
   $("statusText").textContent = t("disconnected");
@@ -480,6 +468,7 @@ async function initialize() {
   const profile = profiles.find((item) => item.id === lastId) || profiles[0];
   if (profile) applyProfile(profile);
   else resetForm();
+  if (!profiles.length && !localStorage.getItem(TUTORIAL_KEY)) openTutorial(true);
 
   if (!window.__TAURI_INTERNALS__) {
     await refreshBrowserDetection();
@@ -539,6 +528,16 @@ $("confirmDialog").addEventListener("close", () => {
   showProfileMessage(t("profileDeleted"));
 });
 $("appLanguage").addEventListener("change", changeAppLanguage);
+$("tutorialLanguage").addEventListener("change", () => {
+  $("appLanguage").value = $("tutorialLanguage").value;
+  return changeAppLanguage();
+});
+$("tutorialButton").addEventListener("click", () => openTutorial());
+$("tutorialRolLink").addEventListener("click", (event) => {
+  if (!window.__TAURI_INTERNALS__) return;
+  event.preventDefault();
+  void openInstallationGuide("rol");
+});
 $("githubLink").addEventListener("click", (event) => {
   if (!window.__TAURI_INTERNALS__) return;
   event.preventDefault();

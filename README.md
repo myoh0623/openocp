@@ -1,4 +1,4 @@
-# Remote OCP 2.2
+# Remote OCP 2.2.1
 
 [English](README.md) | [한국어](README.ko.md)
 
@@ -24,6 +24,17 @@ Remote OCP opens OpenShift/RHOAI dashboards, SSH terminals, and VS Code Remote -
 ## App language
 
 Use **App language** in the sidebar to switch between **English** and **한국어**. English is the default. The choice is remembered for the next launch and applies to the interface, validation, and new connection messages. It is independent of the browser language in each connection profile.
+
+## First-time setup tutorial
+
+The four-step tutorial opens automatically when there are no saved profiles and it has not been dismissed. Reopen it at any time while disconnected with **Setup tutorial** in the sidebar. It supports English and Korean, including a language selector inside the tutorial.
+
+1. **Connection:** In [ROL](https://rol.redhat.com/rol/app/), open your class → **Labs** → your own lab → **Red Hat Training Lab Connector (RHTLC)** → **Copy RHTLC URL**. For self-paced courses, look in **Lab Environment**. Paste the complete address, or choose IP/SSH for a directly reachable SSH IP. ROL's public jump-host IP is not necessarily the workstation; jump-host-only environments should use the RHTLC flow.
+2. **Workstation:** New profiles start with `workstation.lab.example.com`, user `student`, port `22`, and remote folder `/home/student`. Edit these to match your course. Look in the course book's **Introduction → Orientation to the Classroom Environment → Classroom Environment** machine table. Class dashboards link to the book from **Resources → Access Bookshelf**. Section titles can vary. You can also run `hostname -f` in the workstation's **Open Console**.
+3. **Dashboard:** Look under **Accessing the OpenShift Web Console** in the introduction, or the relevant OpenShift AI exercise. Copy the lab dashboard's HTTPS address, not the ROL page address. A blank RHTLC dashboard uses `https://console-openshift-console.apps.ocp4.example.com/`; IP/SSH mode attempts route discovery. A different cluster or OpenShift AI needs its own URL.
+4. **Review & save:** Save the profile, then select **Connect** on the main screen and open your tool. The tutorial itself does not start a connection. RHTLC tokens are masked in the review.
+
+**Skip** clears the current connection address, workstation host, or dashboard URL. Skipping the workstation keeps the folder setting and configures dashboard-only access. You can save a draft without a connection address; Connect remains unavailable until that address is supplied. **Back** preserves your edits. Closing the tutorial or pressing Escape discards tutorial edits. Existing profiles and explicit custom or empty folder/host values are preserved unless you edit and save them.
 
 ## Features
 
@@ -71,7 +82,7 @@ Connect first, then choose a tool. In IP/SSH mode, tools use the configured SSH 
 
 - **Terminal** opens macOS Terminal or Windows Terminal. Windows falls back to a separate PowerShell window when Windows Terminal is unavailable. Windows requires the **OpenSSH Client** optional feature.
 - **VS Code** requires the installed stable VS Code application and Microsoft's **Remote - SSH** extension. It opens a dedicated Remote OCP VS Code window, sharing installed extensions while keeping user settings separate. Advanced settings can specify the VS Code app or executable; use `Code.exe`, not `code.cmd`, on Windows. Portable installations are detected and rejected with a clear message because they override the isolated connection profile; choose a standard installation.
-- **VS Code remote folder** is optional. Enter an absolute Linux path such as `/home/student/project`; leave it blank to connect without opening a folder. The target must meet [VS Code Remote - SSH requirements](https://code.visualstudio.com/docs/remote/ssh), including permission and network access for VS Code Server installation.
+- **VS Code remote folder** defaults to `/home/student` in new profiles. Change it to another absolute Linux path such as `/home/student/project`, or clear it to connect without opening a folder. The target must meet [VS Code Remote - SSH requirements](https://code.visualstudio.com/docs/remote/ssh), including permission and network access for VS Code Server installation.
 - Complete SSH authentication in the opened application. Passwords and passphrases supplied to Remote OCP are not transferred to external tools. Set a private-key path in advanced settings if needed; encrypted keys are unlocked in the external application.
 
 Remote OCP creates private, session-specific SSH configuration files and uses a dedicated known-hosts file in its app data directory. OpenSSH asks before accepting an unknown host key and rejects changed keys. Host identities stay stable across local port changes and are separated by lab gateway and target. Existing `~/.ssh/config` files are not modified or loaded by the generated configuration. Dedicated VS Code profiles are stored under `~/.remote-ocp/code-<app-id-hash>` (a short path compatible with macOS socket limits); its `User/settings.json` supports VS Code JSONC, including comments and trailing commas. Remote OCP preserves comments and other settings when updating connection options. Invalid settings are left unchanged and reported.

@@ -14,7 +14,7 @@
           <img class="app-logo" src="/src/assets/AppIcon.png" alt="" />
           <div>
             <h1>Remote OCP</h1>
-            <span id="platformBadge">Desktop · v2.2</span>
+            <span id="platformBadge">Desktop · v2.2.1</span>
           </div>
         </div>
 
@@ -48,6 +48,8 @@
           </div>
           <span class="save-message" id="profileMessage" aria-live="polite"></span>
         </section>
+
+        <button class="button subtle tutorial-launch" id="tutorialButton" type="button" data-i18n="tutorialOpen">Setup tutorial</button>
 
         <div class="sidebar-tip">
           <span class="tip-icon">i</span>
@@ -164,7 +166,7 @@
             </div>
             <label class="field remote-folder">
               <span><span data-i18n="remoteFolder">VS Code remote folder</span> <small data-i18n="optional">Optional</small></span>
-              <input id="remoteFolder" autocomplete="off" spellcheck="false" placeholder="/home/student" />
+              <input id="remoteFolder" value="/home/student" autocomplete="off" spellcheck="false" placeholder="/home/student" />
               <small class="field-hint" data-i18n="externalAuthHint">Complete SSH sign-in in the opened application. VS Code needs the Remote - SSH extension.</small>
             </label>
             <div class="tool-readiness" aria-live="polite">
@@ -260,6 +262,75 @@
         </section>
       </section>
     </main>
+
+    <dialog id="tutorialDialog" class="tutorial-dialog" aria-labelledby="tutorialTitle" aria-describedby="tutorialIntro">
+      <header class="tutorial-header">
+        <div><h2 id="tutorialTitle" data-i18n="tutorialTitle">Set up your lab</h2><p id="tutorialIntro" data-i18n="tutorialIntro">Enter the values you have. Skip anything you need to find later.</p></div>
+        <label class="compact-field tutorial-language"><span data-i18n="appLanguage">App language</span><select id="tutorialLanguage"><option value="en">English</option><option value="ko">한국어</option></select></label>
+      </header>
+      <ol class="tutorial-progress" aria-label="Setup steps" data-i18n-aria-label="tutorialSteps">
+        <li id="tutorialProgress0"><span>1</span><span data-i18n="tutorialConnection">Connection</span></li>
+        <li id="tutorialProgress1"><span>2</span><span data-i18n="tutorialWorkstation">Workstation</span></li>
+        <li id="tutorialProgress2"><span>3</span><span data-i18n="tutorialDashboard">Dashboard</span></li>
+        <li id="tutorialProgress3"><span>4</span><span data-i18n="tutorialReview">Review</span></li>
+      </ol>
+      <div id="tutorialBody" class="tutorial-body">
+        <span id="tutorialCounter" class="tutorial-counter"></span>
+        <h3 id="tutorialStepTitle" tabindex="-1"></h3>
+        <section id="tutorialStep0">
+          <p data-i18n="tutorialConnectionHelp">Open your course in ROL, select Lab Environment (or Labs on a class dashboard), and look for Copy RHTLC URL in your lab controls once the lab is running.</p>
+          <a id="tutorialRolLink" class="tutorial-link" href="https://rol.redhat.com/rol/app/" target="_blank" rel="noopener noreferrer" data-i18n="tutorialOpenRol">Open rol.redhat.com ↗</a>
+          <div class="form-grid two-column">
+            <label class="field"><span data-i18n="name">Name</span><input id="tutorial-profileName" autocomplete="off" placeholder="Training cluster" data-i18n-placeholder="profilePlaceholder" /></label>
+            <label class="field"><span data-i18n="connectionMethod">Connection method</span><select id="tutorial-connectionMode"><option value="rhtlc" data-i18n="rhtlcOption">RHTLC URL · No VPN required</option><option value="ssh">IP · SSH</option></select></label>
+          </div>
+          <div id="tutorialRhtlcFields">
+            <label class="field"><span data-i18n="rhtlcURL">RHTLC URL</span><input id="tutorial-rhtlcURL" type="password" autocomplete="off" spellcheck="false" placeholder="rhtlc://…/lab?token=…" /><small class="field-hint" data-i18n="tutorialCopyHelp">Paste the entire copied address here. Do not use the browser's ROL page URL. If the button is unavailable, skip and return after the lab is ready.</small></label>
+          </div>
+          <div id="tutorialSshFields" hidden>
+            <p data-i18n="tutorialIpHelp">Use an SSH IP address reachable from this computer. ROL's SSH private key & instructions may describe a jump host; that public jump-host IP is not the lab workstation. Use RHTLC for the guided lab setup if a jump host is required.</p>
+            <div class="form-grid"><label class="field"><span data-i18n="ipAddress">IP address</span><input id="tutorial-sshIP" placeholder="192.0.2.10" autocomplete="off" /></label><label class="field"><span data-i18n="user">User</span><input id="tutorial-sshUser" autocomplete="off" /></label><label class="field"><span data-i18n="port">Port</span><input id="tutorial-sshPort" type="number" min="1" max="65535" /></label></div>
+            <p data-i18n="tutorialPasswordLater">Enter your password or private key in Connection settings after completing this tutorial.</p>
+          </div>
+        </section>
+        <section id="tutorialStep1" hidden>
+          <div id="tutorialRemoteFields">
+            <p data-i18n="tutorialWorkstationHelp">In the course's introduction, find the lab environment or machine table. Use the workstation hostname listed there. In its web console, hostname -f also shows the full name. workstation.lab.example.com is an example; use your course's value.</p>
+            <div class="form-grid"><label class="field"><span data-i18n="remoteHost">Lab SSH host</span><input id="tutorial-remoteHost" autocomplete="off" spellcheck="false" placeholder="workstation.lab.example.com" /></label><label class="field"><span data-i18n="user">User</span><input id="tutorial-remoteUser" autocomplete="off" /></label><label class="field"><span data-i18n="port">Port</span><input id="tutorial-remotePort" type="number" min="1" max="65535" /></label></div>
+            <p data-i18n="tutorialHostHelp">Only Terminal and VS Code need this host. Leave it blank for dashboard access only. Use the SSH account from your course; many labs use student on port 22.</p>
+          </div>
+          <p id="tutorialSshTargetHint" data-i18n="tutorialSameSshTarget">Terminal and VS Code use the IP, user, and port from step 1.</p>
+          <label class="field"><span data-i18n="remoteFolder">VS Code remote folder</span><input id="tutorial-remoteFolder" autocomplete="off" spellcheck="false" placeholder="/home/student" /><small class="field-hint" data-i18n="tutorialFolderHelp">/home/student is the default for new profiles. Change it for another account or folder, or clear it to connect without opening a folder.</small></label>
+        </section>
+        <section id="tutorialStep2" hidden>
+          <p data-i18n="tutorialDashboardHelp">Find the OpenShift web console or OpenShift AI URL in the course's lab introduction or exercise instructions. You can also copy it from the browser inside the workstation web console. This is the lab dashboard URL, not the ROL course URL.</p>
+          <label class="field"><span data-i18n="dashboardURL">Dashboard URL</span><input id="tutorial-dashboardURL" autocomplete="off" spellcheck="false" placeholder="https://console-openshift-console.apps…" /></label>
+          <p id="tutorialDashboardDefault" class="tutorial-note"></p>
+          <p data-i18n="tutorialDashboardFinding">If OpenShift AI is installed, open it from the OpenShift console's application launcher and copy its URL. Dashboard availability and addresses depend on the course.</p>
+        </section>
+        <section id="tutorialStep3" hidden>
+          <p id="tutorialCompletionHint"></p>
+          <dl class="tutorial-summary">
+            <dt data-i18n="name">Name</dt><dd id="tutorialSummaryName"></dd>
+            <dt data-i18n="connectionMethod">Connection method</dt><dd id="tutorialSummaryConnection"></dd>
+            <dt data-i18n="remoteHost">Lab SSH host</dt><dd id="tutorialSummaryHost"></dd>
+            <dt data-i18n="remoteFolder">VS Code remote folder</dt><dd id="tutorialSummaryFolder"></dd>
+            <dt data-i18n="dashboardURL">Dashboard URL</dt><dd id="tutorialSummaryDashboard"></dd>
+          </dl>
+          <p class="tutorial-note" data-i18n="privacyHint">IP addresses and full RHTLC URLs, including tokens, are saved in profiles on this device. Passwords and key passphrases are not saved.</p>
+          <p data-i18n="tutorialAfterSave">After saving, select Connect, then Dashboard, Terminal, or VS Code. Windows Terminal access needs OpenSSH Client; VS Code needs Remote - SSH. Check Tool installation status on the main screen.</p>
+        </section>
+        <p id="tutorialError" class="tutorial-error" role="alert" tabindex="-1"></p>
+      </div>
+      <footer class="tutorial-footer">
+        <button id="tutorialLaterButton" class="text-button" type="button" data-i18n="tutorialLater">Close without saving</button>
+        <div class="dialog-actions">
+          <button id="tutorialBackButton" class="button subtle" type="button" data-i18n="tutorialBack">Back</button>
+          <button id="tutorialSkipButton" class="button subtle" type="button" data-i18n="tutorialSkip">Skip</button>
+          <button id="tutorialNextButton" class="button primary" type="button" data-i18n="tutorialNext">Next</button>
+        </div>
+      </footer>
+    </dialog>
 
     <dialog id="confirmDialog">
       <form method="dialog">

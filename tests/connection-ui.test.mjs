@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import vm from 'node:vm';
 import test from 'node:test';
 import { normalizeLanguage, translate } from '../src/i18n.js';
+import { createTutorial } from '../src/tutorial.js';
+import { profileIssue } from '../src/profile-validation.js';
 
 // Run the actual UI controller with a small DOM and IPC boundary. No native app
 // or lab is needed to exercise event ordering, validation, and profile storage.
@@ -17,10 +19,13 @@ async function fixture(initialStorage = []) {
   };
   for (const [, tag, id] of html.matchAll(/(<[^>]*\bid="([^"]+)"[^>]*>)/g)) {
     elements.set(id, { value: '', type: /type="checkbox"/.test(tag) ? 'checkbox' : 'text',
-      checked: false, textContent: '', classList: classes(), handlers: new Map(),
+      checked: false, open: false, textContent: '', classList: classes(), handlers: new Map(), attributes: new Map(),
       addEventListener(type, handler) { this.handlers.set(type, handler); },
       dispatch(type) { return this.handlers.get(type)?.({ target: this }); },
-      replaceChildren() {}, add() {}, focus() {}, showModal() {} });
+      replaceChildren() {}, add() {}, focus() {},
+      setAttribute(key, value) { this.attributes.set(key, value); },
+      showModal() { this.open = true; },
+      close() { this.open = false; this.dispatch('close'); } });
   }
   const saved = new Map(initialStorage), events = new Map(), calls = [];
   let resolveStart, resolveTool, rejectTool;
@@ -32,7 +37,7 @@ async function fixture(initialStorage = []) {
       documentElement: {}, querySelector: () => ({ classList: classes() }) },
     localStorage: { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v), removeItem: k => saved.delete(k) },
     window: { __TAURI_INTERNALS__: true, setTimeout() {}, clearTimeout() {} }, navigator: { userAgent: 'Mac' },
-    crypto: { randomUUID }, Option: class {}, URL, Intl, appVersion: '2.2.0', normalizeLanguage, translate,
+    crypto: { randomUUID }, Option: class {}, URL, Intl, appVersion: '2.2.1', normalizeLanguage, translate, createTutorial, profileIssue,
     applyTranslations() {}, listen: async (name, fn) => events.set(name, fn),
     invoke: async (name, args) => {
       calls.push({ name, args });
@@ -86,6 +91,7 @@ test('tool launch completion and language rendering do not reenable tools after 
 test('RHTLC dashboard-only profiles save the URL, omit passwords, and require a target for SSH tools', async () => {
   const f = await fixture();
   f.elements.get('connectionMode').value = 'rhtlc';
+  f.elements.get('remoteHost').value = '';
   f.elements.get('rhtlcURL').value = 'rhtlc://lab.invalid/lab?token=test-only';
   f.elements.get('password').value = 'not-to-be-saved';
   f.elements.get('privateKeyPassphrase').value = 'also-not-to-be-saved';
@@ -209,4 +215,143 @@ test('launch failures remain visible across language changes and are recorded', 
   assert.match(f.elements.get('logOutput').textContent, /VS Code exited with code 7/);
   f.events.get('tool-error')({ payload: 'A later startup failure' });
   assert.equal(f.elements.get('errorMessage').textContent, 'A later startup failure');
+});
+
+test('first-run tutorial is dismissible, repeatable, and does not overwrite the form', async () => {
+  const f = await fixture();
+  assert.equal(f.elements.get('tutorialDialog').open, true);
+  assert.equal(f.elements.get('tutorial-connectionMode').value, 'rhtlc');
+  assert.equal(f.elements.get('remoteFolder').value, '/home/student');
+  assert.equal(f.elements.get('remoteHost').value, 'workstation.lab.example.com');
+  assert.equal(f.elements.get('tutorial-remoteHost').value, 'workstation.lab.example.com');
+  f.elements.get('tutorial-rhtlcURL').value = 'rhtlc://lab.invalid/session?token=discard-me';
+  f.elements.get('tutorialLaterButton').dispatch('click');
+  assert.equal(f.elements.get('tutorialDialog').open, false);
+  assert.equal(f.elements.get('rhtlcURL').value, '');
+  assert.equal(f.elements.get('tutorial-rhtlcURL').value, '');
+  assert.equal(f.saved.has('remoteOcp.connectionProfiles.v2'), false);
+  const restarted = await fixture(f.saved);
+  assert.equal(restarted.elements.get('tutorialDialog').open, false);
+  restarted.elements.get('tutorialButton').dispatch('click');
+  assert.equal(restarted.elements.get('tutorialDialog').open, true);
+});
+
+test('skipping every address saves a draft without connecting, and survives restart', async () => {
+  for (const mode of ['rhtlc', 'ssh']) {
+    const f = await fixture();
+    f.elements.get('tutorial-connectionMode').value = mode;
+    f.elements.get('tutorial-connectionMode').dispatch('change');
+    for (let i = 0; i < 3; i++) f.elements.get('tutorialSkipButton').dispatch('click');
+    assert.equal(f.elements.get('tutorialStep3').hidden, false);
+    assert.match(f.elements.get('tutorialCompletionHint').textContent, /missing connection address/);
+    f.elements.get('tutorialNextButton').dispatch('click');
+    const profile = JSON.parse(f.saved.get('remoteOcp.connectionProfiles.v2'))[0];
+    assert.equal(profile.connectionMode, mode);
+    assert.equal(profile.sshIP, '');
+    assert.equal(profile.rhtlcURL, '');
+    assert.equal(profile.remoteFolder, '/home/student');
+    assert.equal(profile.remoteHost, '');
+    assert.equal(f.elements.get('connectButton').disabled, true);
+    await f.run('connect()');
+    assert.equal(f.calls.some(c => c.name === 'start_connection'), false);
+    const restarted = await fixture(f.saved);
+    assert.equal(restarted.elements.get('tutorialDialog').open, false);
+    assert.equal(restarted.elements.get('connectButton').disabled, true);
+  }
+});
+
+test('tutorial preserves entered values across Back and language changes, masks tokens, and saves once', async () => {
+  const f = await fixture();
+  const address = 'rhtlc://https://lab.invalid/session?token=test%2Bonly%3D&other=a%26b';
+  const entered = { profileName: 'My lab', rhtlcURL: address,
+    remoteHost: 'workstation.lab.example.com', remoteUser: 'student', remotePort: '22',
+    remoteFolder: '/home/student/my project', dashboardURL: 'https://console.apps.lab.invalid/' };
+  for (const [field, value] of Object.entries(entered)) f.elements.get(`tutorial-${field}`).value = value;
+  f.elements.get('password').value = 'never-store-this';
+  f.elements.get('privateKeyPassphrase').value = 'never-store-this-either';
+  f.elements.get('tutorialNextButton').dispatch('click');
+  f.elements.get('tutorialBackButton').dispatch('click');
+  f.elements.get('tutorialLanguage').value = 'ko';
+  await f.elements.get('tutorialLanguage').dispatch('change');
+  assert.equal(f.elements.get('tutorial-rhtlcURL').value, address);
+  assert.equal(f.elements.get('tutorialStepTitle').textContent, '연결 주소');
+  for (let i = 0; i < 3; i++) f.elements.get('tutorialNextButton').dispatch('click');
+  assert.equal(f.elements.get('tutorialStep3').hidden, false);
+  assert.equal(f.elements.get('tutorialSummaryConnection').textContent.includes('test%2B'), false);
+  f.elements.get('tutorialNextButton').dispatch('click');
+  const profiles = JSON.parse(f.saved.get('remoteOcp.connectionProfiles.v2'));
+  assert.equal(profiles.length, 1);
+  assert.equal(profiles[0].name, entered.profileName);
+  for (const [field, value] of Object.entries(entered).filter(([field]) => field !== 'profileName')) assert.equal(profiles[0][field], value);
+  assert.equal(JSON.stringify(profiles).includes('never-store'), false);
+  assert.equal(f.calls.some(c => c.name === 'start_connection'), false);
+  assert.equal(f.elements.get('connectButton').disabled, false);
+  assert.equal(f.elements.get('tutorial-rhtlcURL').value, '');
+});
+
+test('tutorial rejects malformed supplied values before advancing', async () => {
+  const f = await fixture();
+  f.elements.get('tutorial-rhtlcURL').value = 'https://rol.redhat.com/rol/app/';
+  f.elements.get('tutorialNextButton').dispatch('click');
+  assert.equal(f.elements.get('tutorialStep0').hidden, false);
+  assert.equal(f.elements.get('tutorialError').textContent, translate('en', 'invalidRhtlc'));
+  f.elements.get('tutorial-rhtlcURL').value = '';
+  f.elements.get('tutorial-connectionMode').value = 'ssh';
+  f.elements.get('tutorial-sshIP').value = '999.1.2.3';
+  f.elements.get('tutorialNextButton').dispatch('click');
+  assert.equal(f.elements.get('tutorialError').textContent, translate('en', 'invalidIP'));
+  f.elements.get('tutorial-connectionMode').value = 'rhtlc';
+  f.elements.get('tutorialNextButton').dispatch('click');
+  for (const [field, value, key] of [
+    ['remoteHost', 'https://workstation.lab.example.com', 'invalidRemoteHost'],
+    ['remoteFolder', 'relative/path', 'invalidRemoteFolder']
+  ]) {
+    f.elements.get(`tutorial-${field}`).value = value;
+    f.elements.get('tutorialNextButton').dispatch('click');
+    assert.equal(f.elements.get('tutorialStep1').hidden, false);
+    assert.equal(f.elements.get('tutorialError').textContent, translate('en', key));
+    f.elements.get(`tutorial-${field}`).value = '';
+  }
+  f.elements.get('tutorialNextButton').dispatch('click');
+  f.elements.get('tutorial-dashboardURL').value = 'file:///private/file';
+  f.elements.get('tutorialNextButton').dispatch('click');
+  assert.equal(f.elements.get('tutorialStep2').hidden, false);
+  assert.equal(f.saved.has('remoteOcp.connectionProfiles.v2'), false);
+});
+
+test('existing profiles keep explicit folders and advanced settings when using or cancelling the tutorial', async () => {
+  for (const folder of [undefined, '', '/opt/project']) {
+    const profile = { id: 'saved', name: 'Saved', connectionMode: 'rhtlc', rhtlcURL: 'rhtlc://lab.invalid/?token=original',
+      socksPort: '1081', browserPath: '/custom/browser', privateKeyPath: '/custom/key', remoteFolder: folder };
+    const storage = [['remoteOcp.connectionProfiles.v2', JSON.stringify([profile])]];
+    const f = await fixture(storage);
+    assert.equal(f.elements.get('tutorialDialog').open, false);
+    assert.equal(f.elements.get('remoteFolder').value, folder ?? '/home/student');
+    f.elements.get('tutorialButton').dispatch('click');
+    f.elements.get('tutorial-remoteFolder').value = '/discard';
+    f.elements.get('tutorialDialog').close(); // Native dialog Escape has the same close event.
+    assert.equal(f.elements.get('remoteFolder').value, folder ?? '/home/student');
+    assert.equal(f.saved.get('remoteOcp.connectionProfiles.v2'), storage[0][1]);
+    f.elements.get('tutorialButton').dispatch('click');
+    for (let i = 0; i < 4; i++) f.elements.get('tutorialNextButton').dispatch('click');
+    const saved = JSON.parse(f.saved.get('remoteOcp.connectionProfiles.v2'));
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].id, 'saved');
+    assert.equal(saved[0].remoteFolder, folder ?? '/home/student');
+    assert.equal(saved[0].browserPath, '/custom/browser');
+    assert.equal(saved[0].privateKeyPath, '/custom/key');
+    assert.equal(saved[0].socksPort, '1081');
+  }
+});
+
+test('tutorial cannot modify an active connection', async () => {
+  const f = await fixture();
+  f.elements.get('tutorialLaterButton').dispatch('click');
+  const pending = f.run('connect()');
+  f.elements.get('tutorialButton').dispatch('click');
+  assert.equal(f.elements.get('tutorialDialog').open, false);
+  assert.equal(f.elements.get('tutorialButton').disabled, true);
+  f.resolveStart({ socksPort: 1080 }); await pending;
+  f.elements.get('tutorialButton').dispatch('click');
+  assert.equal(f.elements.get('tutorialDialog').open, false);
 });

@@ -1,4 +1,4 @@
-# Remote OCP 2.2
+# Remote OCP 2.2.1
 
 [English](README.md) | [한국어](README.ko.md)
 
@@ -24,6 +24,17 @@ Remote OCP는 IP/SSH 연결 또는 Red Hat Training Lab Connector(`rhtlc://`) �
 ## 앱 언어
 
 사이드바의 **App language / 앱 언어**에서 **English**와 **한국어**를 선택할 수 있습니다. 기본 언어는 영어이며, 선택한 언어는 다음 실행에도 유지됩니다. 화면, 입력값 검증, 새 연결 메시지에 적용되며 연결 프로필별 브라우저 언어와는 별개입니다.
+
+## 처음 사용하는 분을 위한 튜토리얼
+
+저장된 프로필이 없고 튜토리얼을 닫은 적이 없으면 4단계 안내가 자동으로 열립니다. 연결하지 않은 상태에서 사이드바의 **시작 튜토리얼** 버튼으로 언제든 다시 확인할 수 있습니다. 튜토리얼 안에서도 한국어와 영어를 전환할 수 있습니다.
+
+1. **연결 주소:** [ROL](https://rol.redhat.com/rol/app/)의 강의 → **Labs(랩)** → 내 랩 → **Red Hat Training Lab Connector (RHTLC)** → **Copy RHTLC URL**에서 주소를 복사합니다. 온라인 자율 학습 과정은 **Lab Environment(랩 환경)**에서 확인합니다. 전체 주소를 붙여넣거나, 직접 접속 가능한 IP가 있으면 IP/SSH를 선택하세요. ROL의 공인 중계 서버 IP는 workstation 주소와 다를 수 있으므로 중계 서버가 필요한 실습은 RHTLC를 사용하세요.
+2. **Workstation:** 새 프로필에는 `workstation.lab.example.com`, 사용자 `student`, 포트 `22`, 원격 폴더 `/home/student`가 기본으로 입력됩니다. 교재의 **소개 → 강의실 환경에 대한 오리엔테이션 → 강의실 환경** 표를 보고 수정하세요. 강의 대시보드의 **Resources → Access Bookshelf**에서 교재를 열 수 있습니다. 과정에 따라 절 제목은 다를 수 있습니다. workstation의 **Open Console**에서 `hostname -f` 명령으로도 호스트 이름을 확인할 수 있습니다.
+3. **대시보드:** 교재 소개의 **OpenShift 웹 콘솔 액세스** 또는 OpenShift AI 실습 절차에서 HTTPS 주소를 찾습니다. ROL 강의 페이지 주소가 아닌 실습 대시보드 주소를 사용하세요. RHTLC에서 비워 두면 `https://console-openshift-console.apps.ocp4.example.com/`을 사용하며, IP/SSH에서는 원격 주소 검색을 시도합니다. 다른 클러스터나 OpenShift AI는 해당 URL을 입력해야 합니다.
+4. **확인 · 저장:** 프로필을 저장한 뒤 메인 화면에서 **연결**을 누르고 사용할 도구를 여세요. 튜토리얼 자체는 연결을 시작하지 않습니다. 확인 화면에서는 RHTLC 토큰을 표시하지 않습니다.
+
+**건너뛰기**는 해당 단계의 연결 주소·SSH 호스트·대시보드 URL을 비웁니다. Workstation 단계를 건너뛰면 원격 폴더는 유지하면서 대시보드 전용으로 설정합니다. 연결 주소 없이도 프로필을 저장할 수 있으며, 주소를 채우기 전에는 연결할 수 없습니다. **이전**을 누르면 입력값이 유지되고, 닫기 또는 Escape는 튜토리얼에서 수정한 값을 취소합니다. 기존 프로필과 직접 지정한 호스트·폴더(빈 값 포함)는 수정 후 저장하기 전까지 유지됩니다.
 
 ## 주요 기능
 
@@ -71,7 +82,7 @@ Remote OCP는 IP/SSH 연결 또는 Red Hat Training Lab Connector(`rhtlc://`) �
 
 - **터미널**: macOS의 Terminal 또는 Windows Terminal을 엽니다. Windows Terminal이 없으면 별도의 PowerShell 창을 엽니다. Windows에는 선택적 기능인 **OpenSSH 클라이언트**가 필요합니다.
 - **VS Code**: 안정 버전의 VS Code와 Microsoft의 **Remote - SSH** 확장이 필요합니다. Remote OCP 전용 창에서 실행하며, 설치된 확장은 공유하고 사용자 설정은 분리합니다. 고급 설정에서 VS Code 앱 또는 실행 파일을 지정할 수 있습니다. Windows에서는 `code.cmd` 대신 `Code.exe`를 선택하세요. 포터블 버전은 독립된 연결 프로필 설정을 무시하므로 실행을 차단하고 안내 메시지를 표시합니다. 일반 설치 버전을 사용하세요.
-- **VS Code 원격 폴더**: 선택 사항입니다. `/home/student/project`와 같은 Linux 절대 경로를 입력하세요. 비워 두면 폴더를 열지 않고 연결합니다. 원격 환경은 VS Code Server 설치 권한과 네트워크 접근을 포함한 [VS Code Remote - SSH 요구 사항](https://code.visualstudio.com/docs/remote/ssh)을 충족해야 합니다.
+- **VS Code 원격 폴더**: 새 프로필의 기본값은 `/home/student`입니다. `/home/student/project`와 같은 다른 Linux 절대 경로로 수정하거나, 폴더를 열지 않으려면 비워 두세요. 원격 환경은 VS Code Server 설치 권한과 네트워크 접근을 포함한 [VS Code Remote - SSH 요구 사항](https://code.visualstudio.com/docs/remote/ssh)을 충족해야 합니다.
 - SSH 인증은 열린 도구에서 완료합니다. Remote OCP에 입력한 비밀번호와 개인 키 암호는 외부 도구로 전달하지 않습니다. 필요한 경우 고급 설정에서 개인 키 경로를 지정하세요. 암호화된 키는 외부 도구에서 잠금을 해제합니다.
 
 Remote OCP는 세션마다 전용 SSH 설정 파일을 만들고, 앱 데이터 폴더의 별도 known-hosts 파일을 사용합니다. OpenSSH는 알 수 없는 호스트 키를 수락하기 전에 확인을 요청하며 변경된 키는 거부합니다. 호스트 식별은 로컬 포트가 달라져도 유지되고, 실습 게이트웨이와 대상별로 구분됩니다. 기존 `~/.ssh/config`는 변경하거나 생성된 설정에서 읽어 들이지 않습니다. VS Code 전용 프로필은 macOS 소켓 경로 길이 제한에 맞춘 짧은 경로인 `~/.remote-ocp/code-<app-id-hash>`에 저장합니다. 프로필의 `User/settings.json`은 주석과 마지막 쉼표를 포함한 VS Code JSONC를 지원합니다. 연결 옵션을 갱신할 때 주석과 다른 설정을 보존하며, 잘못된 설정 파일은 변경하지 않고 오류를 알립니다.

@@ -336,3 +336,38 @@ dialog p { margin: 8px 0 19px; color: var(--muted); font-size: 12px; }
 .tool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .connected-tools p { margin: 10px 0 0; line-height: 1.5; font-size: 11px; color: var(--muted); }
 .remote-folder { margin-top: 16px; }
+
+.tutorial-launch { margin: 18px 0; }
+.tutorial-dialog { width: min(680px, calc(100% - 32px)); padding: 0; max-height: calc(100dvh - 32px); }
+.tutorial-dialog[open] { display: flex; flex-direction: column; }
+.tutorial-header { display: flex; gap: 24px; padding: 22px 26px 14px; flex-shrink: 0; }
+.tutorial-header h2 { margin: 0; font-size: 22px; letter-spacing: -.5px; }
+.tutorial-dialog p { line-height: 1.65; margin: 12px 0; color: var(--muted); }
+.tutorial-header p { margin: 6px 0 0; }
+.tutorial-language { flex: 0 0 100px; margin-left: auto; }
+.tutorial-progress { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; list-style: none; margin: 0; padding: 0 26px 18px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.tutorial-progress li { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
+.tutorial-progress li > span:first-child { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: var(--soft); flex-shrink: 0; }
+.tutorial-progress li[aria-current="step"] { color: var(--text); font-weight: 750; }
+.tutorial-progress li[aria-current="step"] > span:first-child { color: #fff; background: var(--accent); }
+.tutorial-body { min-height: 0; overflow: auto; padding: 20px 26px 6px; }
+.tutorial-counter { display: block; font-size: 10px; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
+.tutorial-body .form-grid, .tutorial-body .field { margin-top: 14px; }
+.tutorial-body .form-grid .field { margin-top: 0; }
+.tutorial-link { display: inline-block; color: var(--accent); font-size: 12px; margin-bottom: 2px; }
+.tutorial-body .field-hint { font-size: 11px; color: var(--muted); line-height: 1.6; }
+.tutorial-note { background: var(--soft); padding: 12px; border-radius: 8px; overflow-wrap: anywhere; }
+.tutorial-summary { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 14px 18px; padding: 18px 0; margin: 0; font-size: 12px; line-height: 1.6; }
+.tutorial-summary dt { color: var(--muted); }
+.tutorial-summary dd { margin: 0; overflow-wrap: anywhere; }
+.tutorial-dialog .tutorial-error { color: #b04737; margin: 12px 0; }
+.tutorial-error:empty { display: none; }
+.tutorial-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 26px; border-top: 1px solid var(--line); flex-shrink: 0; }
+.tutorial-footer > button { font-size: 11px; text-align: left; line-height: 1.5; }
+.tutorial-footer .button.primary { min-width: 100px; }
+.tutorial-dialog [hidden] { display: none !important; }
+.tutorial-dialog button:focus-visible, .tutorial-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (prefers-color-scheme: dark) {
+  .tutorial-dialog .tutorial-error { color: #ef9b8c; }
+  .tutorial-link, .tutorial-footer > .text-button { color: #ff9cab; }
+}
