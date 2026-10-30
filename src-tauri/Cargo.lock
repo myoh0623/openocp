@@ -3273,6 +3273,7 @@ name = "remote-ocp"
 version = "2.2.1"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "jsonc-parser",
  "russh",
  "serde",
@@ -3283,6 +3284,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

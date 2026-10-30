@@ -4,6 +4,9 @@ use super::*;
 use sha2::{Digest, Sha256};
 use std::process::Stdio;
 
+#[cfg(windows)]
+mod windows_console;
+
 #[derive(Clone, Debug)]
 pub(crate) struct Route {
     pub host: String,
@@ -198,15 +201,8 @@ impl Session {
                     powershell_quote(&self.config.to_string_lossy()),
                     powershell_quote(&self.alias)
                 );
-                let powershell = env::var_os("SystemRoot")
-                    .map(PathBuf::from)
-                    .context("SystemRoot is unavailable")?
-                    .join("System32/WindowsPowerShell/v1.0/powershell.exe");
-                launch_detached(
-                    Command::new(powershell)
-                        .args(["-NoLogo", "-NoProfile", "-NoExit", "-Command"])
-                        .arg(text)
-                        .creation_flags(0x00000010),
+                monitor_launch(
+                    windows_console::spawn(&text)?.wait(),
                     "PowerShell",
                     launch_error_reporter(app, stop),
                 )
@@ -309,15 +305,23 @@ async fn launch_detached(
             "Could not launch the external application. Check its executable and permissions.",
             "외부 프로그램을 실행하지 못했습니다. 실행 파일과 권한을 확인하세요."
         ))?;
+    monitor_launch(async move { child.wait().await }, name, on_error).await
+}
+
+async fn monitor_launch(
+    wait: impl std::future::Future<Output = std::io::Result<std::process::ExitStatus>> + Send + 'static,
+    name: &str,
+    on_error: impl FnOnce(String) + Send + 'static,
+) -> Result<()> {
+    let mut wait = Box::pin(wait);
     // Detect immediate failure, but allow long-lived editors and successful
     // handoff to existing windows. Never kill the user's editor on drop.
-    match timeout(Duration::from_secs(2), child.wait()).await {
+    match timeout(Duration::from_secs(2), wait.as_mut()).await {
         Ok(status) => launch_status(status?, name),
         Err(_) => {
             let name = name.to_owned();
             tokio::spawn(async move {
-                let result = child
-                    .wait()
+                let result = wait
                     .await
                     .map_err(anyhow::Error::from)
                     .and_then(|status| launch_status(status, &name));
@@ -787,6 +791,31 @@ mod tests {
     #[test]
     fn launcher_fixture() {
         match env::var("REMOTE_OCP_TEST_LAUNCH").as_deref() {
+            #[cfg(windows)]
+            Ok("console-host") => {
+                let process =
+                    windows_console::spawn(&env::var("REMOTE_OCP_TEST_CONSOLE_SCRIPT").unwrap())
+                        .unwrap();
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build()
+                    .unwrap();
+                assert!(runtime.block_on(process.wait()).unwrap().success());
+            }
+            #[cfg(windows)]
+            Ok("console-probe") => {
+                use std::io::IsTerminal;
+                let handles = [
+                    std::io::stdin().is_terminal(),
+                    std::io::stdout().is_terminal(),
+                    std::io::stderr().is_terminal(),
+                ];
+                std::fs::write(
+                    env::var_os("REMOTE_OCP_TEST_CONSOLE_REPORT").unwrap(),
+                    serde_json::to_vec(&handles).unwrap(),
+                )
+                .unwrap();
+            }
             Ok("fail") => std::process::exit(7),
             Ok("late-fail") => {
                 std::thread::sleep(Duration::from_secs(3));
@@ -801,6 +830,58 @@ mod tests {
         cmd.args(["--exact", "remote_tools::tests::launcher_fixture"])
             .env("REMOTE_OCP_TEST_LAUNCH", case);
         cmd
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn powershell_fallback_restores_native_console_handles() {
+        // Exercise real parent -> Windows PowerShell -> native-child launches,
+        // with the parent inheriting NUL/pipes like GUI apps and CI runners.
+        let root = env::temp_dir().join(format!(
+            "remote-ocp-console 한글 ' & %PATH% ! ^ (test)-{}",
+            Uuid::new_v4()
+        ));
+        private_directory(&root).unwrap();
+        let fixture = root.join("console probe.exe");
+        std::fs::copy(env::current_exe().unwrap(), &fixture).unwrap();
+        let report = root.join("handles.json");
+        let script = format!(
+            "$env:REMOTE_OCP_TEST_LAUNCH = 'console-probe'; & {} --exact remote_tools::tests::launcher_fixture --nocapture; exit $LASTEXITCODE",
+            powershell_quote(&fixture.to_string_lossy())
+        );
+        for piped in [false, true] {
+            let mut command = fixture_command("console-host");
+            command
+                .env("REMOTE_OCP_TEST_CONSOLE_SCRIPT", &script)
+                .env("REMOTE_OCP_TEST_CONSOLE_REPORT", &report)
+                .stdin(if piped { Stdio::piped() } else { Stdio::null() })
+                .stdout(if piped { Stdio::piped() } else { Stdio::null() })
+                .stderr(if piped { Stdio::piped() } else { Stdio::null() })
+                .kill_on_drop(true);
+            let mut child = command.spawn().unwrap();
+            let result = timeout(Duration::from_secs(30), child.wait()).await;
+            if result.is_err() {
+                // Only terminate this test's process tree, including the new
+                // console, if a regression leaves PowerShell waiting forever.
+                if let Some(pid) = child.id() {
+                    let _ = Command::new("taskkill.exe")
+                        .args(["/PID", &pid.to_string(), "/T", "/F"])
+                        .output()
+                        .await;
+                }
+            }
+            let status = result.expect("Console fixture timed out").unwrap();
+            assert!(status.success(), "Console fixture failed: {status}");
+            let handles: [bool; 3] =
+                serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+            assert_eq!(
+                handles,
+                [true, true, true],
+                "Native child must receive console stdin/stdout/stderr (piped parent: {piped})"
+            );
+            std::fs::remove_file(&report).unwrap();
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]
