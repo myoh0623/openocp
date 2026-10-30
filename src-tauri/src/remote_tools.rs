@@ -1023,6 +1023,25 @@ mod tests {
         std::fs::remove_dir_all(directory).unwrap();
     }
 
+    async fn rebind_released_listener(address: std::net::SocketAddr) -> TcpListener {
+        // Check release within a deadline rather than assuming the OS can reuse
+        // the port immediately after task completion. Other tests also launch
+        // processes and allocate ephemeral sockets concurrently.
+        timeout(Duration::from_secs(5), async {
+            loop {
+                match TcpListener::bind(address).await {
+                    Ok(listener) => return listener,
+                    Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                    }
+                    Err(error) => panic!("Could not rebind {address}: {error}"),
+                }
+            }
+        })
+        .await
+        .expect("Listener port must be released after shutdown")
+    }
+
     #[tokio::test]
     async fn bridge_forwards_both_directions_and_disconnect_closes_clients() {
         let server = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
@@ -1057,7 +1076,7 @@ mod tests {
                 .unwrap(),
             0
         );
-        assert!(TcpStream::connect(address).await.is_err());
+        let _rebound = rebind_released_listener(address).await;
         timeout(Duration::from_secs(2), echo)
             .await
             .unwrap()
@@ -1106,9 +1125,7 @@ mod tests {
         assert!(!directory.exists());
         // Rebind proves the listener was released, without waiting for Windows'
         // TCP connection-refused retries on a closed port.
-        let rebound = TcpListener::bind((Ipv4Addr::LOCALHOST, port))
-            .await
-            .unwrap();
+        let rebound = rebind_released_listener((Ipv4Addr::LOCALHOST, port).into()).await;
         drop(rebound);
         task.await.unwrap();
         std::fs::remove_dir_all(root).unwrap();
